@@ -9,7 +9,7 @@ services:
             - ./.jackett:/config
 
     rapidbay:
-        image: hauxir/rapidbay:latest
+        image: ghcr.io/sunayg/playbay:latest
         environment:
             - JACKETT_HOST=http://jackett:9117
             - JACKETT_API_KEY=YOUR_API_KEY

@@ -9,7 +9,7 @@ services:
             - ./.prowlarr:/config
 
     rapidbay:
-        image: hauxir/rapidbay:latest
+        image: ghcr.io/sunayg/playbay:latest
         environment:
             - PROWLARR_HOST=http://prowlarr:9696
             - PROWLARR_API_KEY=YOUR_API_KEY

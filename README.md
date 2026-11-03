@@ -8,7 +8,7 @@ PlayBay is a self-hosted video service and torrent client that makes playing vid
 4. Pressing play. It starts while the file is still downloading and converting.
 5. Watching on the device, or casting to AppleTV/Chromecast.
 
-PlayBay is a fork of [RapidBay by hauxir](https://github.com/hauxir/rapidbay), renamed because it has diverged far from the original (internal names such as the `rapidbay` Docker image, the `RAPIDBAY_PORT` variable and the `rapidbay` service in the compose files are unchanged for now). It keeps the Python backend and the MIT license, and changes how the app looks, streams and is configured. See [What is different in this fork](#what-is-different-in-this-fork).
+PlayBay is a fork of [RapidBay by hauxir](https://github.com/hauxir/rapidbay), renamed because it has diverged far from the original (the Docker image is `ghcr.io/sunayg/playbay`; some internal names such as the `RAPIDBAY_PORT` variable and the `rapidbay` service in the compose files are unchanged for now). It keeps the Python backend and the MIT license, and changes how the app looks, streams and is configured. See [What is different in this fork](#what-is-different-in-this-fork).
 
 ## Features
 
@@ -70,13 +70,13 @@ Without a VPN, `docker-compose.yml` runs PlayBay alone on port 5000.
 ### With Docker
 
 ```bash
-docker build -t rapidbay .
+docker build -t playbay .
 
 # Using Jackett
-docker run -p 5000:5000 -e JACKETT_HOST="http://your.jackett.host" -e JACKETT_API_KEY="YourAPIKey" rapidbay
+docker run -p 5000:5000 -e JACKETT_HOST="http://your.jackett.host" -e JACKETT_API_KEY="YourAPIKey" playbay
 
 # Using Prowlarr
-docker run -p 5000:5000 -e PROWLARR_HOST="http://your.prowlarr.host" -e PROWLARR_API_KEY="YourAPIKey" rapidbay
+docker run -p 5000:5000 -e PROWLARR_HOST="http://your.prowlarr.host" -e PROWLARR_API_KEY="YourAPIKey" playbay
 ```
 
 ### Without Docker
