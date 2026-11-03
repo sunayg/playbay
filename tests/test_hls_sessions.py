@@ -633,3 +633,18 @@ def test_the_stuck_encoder_is_restarted_where_it_stopped_and_a_stuck_one_is_give
     assert started == [2, 2] and not session.dead
     assert not manager._recover(session, session.proc, 2)  # type: ignore[arg-type]
     assert session.dead
+
+
+def test_a_running_encoder_is_not_stuck_just_because_the_segments_behind_the_viewer_were_deleted(tmp_path):
+    manager = hs.SessionManager(str(tmp_path))
+    session = _session(duration=1200.0, directory=str(tmp_path))
+    session.proc = _FakeProc()  # type: ignore[assignment]
+    session.start_segment = 10
+    for i in range(10, 60):
+        (tmp_path / hs.segment_name(0, i)).write_text("x")
+    session.requested = 50
+    manager._delete_behind(session)  # segments 10..29 go, the run's first ones included
+    indexes = hs.produced_indexes(str(tmp_path))
+    assert manager._through(session, indexes) == 59  # the run is still seen as reaching 59
+    session.progress_mark, session.progress_at = 9, hs.time.monotonic() - hs.STALL_SECONDS - 1  # as the old count left it
+    assert manager._watch_progress(session, indexes) is None  # it has moved on, so nothing is stuck

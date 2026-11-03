@@ -104,6 +104,8 @@ class Session:
     runs: int = 0
     paused: bool = False
     requested: int = 0
+    # Segments below this were deleted behind the viewer; the run is counted from here, not from its first segment.
+    floor: int = 0
     # The segment of the newest request. Only requests near it may move the encoder, so requests
     # left over from an earlier playback position cannot pull it back.
     latest: int = 0
@@ -327,7 +329,7 @@ class SessionManager:
         result: List[Dict[str, Any]] = []
         for session in sessions:
             hash_, _, filename = session.key.partition("/")
-            through = encoded_through(produced_indexes(session.directory), session.start_segment)
+            through = self._through(session, produced_indexes(session.directory))
             samples = list(session.rate_samples)
             speed = None
             if len(samples) >= 2 and samples[-1][0] > samples[0][0] and samples[-1][1] > samples[0][1]:
@@ -463,6 +465,7 @@ class SessionManager:
         if piped and session.growing is not None:
             threading.Thread(target=self._feed, args=(session.source, session.growing, session.proc), daemon=True).start()
         session.start_segment = index
+        session.floor = 0
         session.progress_mark = -1
         session.progress_at = time.monotonic()
         session.rate_samples.clear()
@@ -514,6 +517,11 @@ class SessionManager:
             with contextlib.suppress(Exception):
                 stdin.close()
 
+    @staticmethod
+    def _through(session: Session, indexes: List[int]) -> int:
+        """How far the running encoder has got, counting its run from the oldest segment not yet deleted."""
+        return encoded_through(indexes, max(session.start_segment, session.floor))
+
     def _ensure_encoding(self, session: Session, index: int) -> None:
         """Make sure an encoder is, or soon will be, producing segment `index`."""
         with session.lock:
@@ -521,13 +529,15 @@ class SessionManager:
                 return  # a newer request has moved on; this one is stale
             proc = session.proc
             alive = proc is not None and proc.poll() is None
+            last = self._through(session, produced_indexes(session.directory))
             if alive:
-                last = encoded_through(produced_indexes(session.directory), session.start_segment)
                 # Coming up (or next) in this run: wait for it. Already past, or too far ahead: restart there.
                 if last < index <= last + 1 + RESTART_GAP:
                     if session.paused:
                         self._resume(session)
                     return
+            if alive:
+                log.event(f"HLS session {session.id[:8]}: asked for segment {index} while the encoder is at {last}, moving it")
             self._start_process(session, index)
 
     def _resume(self, session: Session) -> None:
@@ -665,7 +675,7 @@ class SessionManager:
             indexes = produced_indexes(session.directory)
             stuck = self._watch_progress(session, indexes)
             if session.proc is not None and session.proc.poll() is None and indexes:
-                ahead = encoded_through(indexes, session.start_segment) - session.requested
+                ahead = self._through(session, indexes) - session.requested
                 if ahead > PAUSE_AHEAD and not session.paused:
                     with contextlib.suppress(OSError):
                         session.proc.send_signal(signal.SIGSTOP)
@@ -682,7 +692,7 @@ class SessionManager:
         to catch up is not being stuck. Caller holds session.lock."""
         proc = session.proc
         now = time.monotonic()
-        through = encoded_through(indexes, session.start_segment)
+        through = self._through(session, indexes)
         waiting_for_download = session.growing is not None and not session.growing.complete()
         if proc is not None and proc.poll() is None and not session.paused:
             session.rate_samples.append((now, through))
@@ -703,6 +713,7 @@ class SessionManager:
         cutoff = session.requested - KEEP_BEHIND
         if cutoff <= 0:
             return
+        session.floor = max(session.floor, cutoff)
         with contextlib.suppress(OSError):
             for name in os.listdir(session.directory):
                 match = _SEGMENT_RE.match(name)
