@@ -20,7 +20,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from subprocess import DEVNULL, PIPE, Popen
-from typing import Callable, Dict, List
+from typing import Any, Callable, Dict, List
 
 import fmp4
 import hls_diagnostics
@@ -46,6 +46,8 @@ PIPE_CHUNK = 256 * 1024
 MAX_ENCODER_FAILURES = 2
 # An encoder that is running, has work to do and has produced nothing new for this long is stuck: restart it.
 STALL_SECONDS = 45
+# The encoder's speed is read from this many of the latest once-a-second samples.
+RATE_WINDOW_SAMPLES = 30
 
 _SEGMENT_RE = re.compile(r"^seg_v(\d+)_(\d{4,})\.m4s$")
 _INIT_RE = re.compile(r"^init_v(\d+)\.mp4$")
@@ -112,6 +114,8 @@ class Session:
     # How far the current run had got when last looked at, and when that last changed (the stall watchdog).
     progress_mark: int = -1
     progress_at: float = field(default_factory=time.monotonic)
+    # (time, segments through) of the running encoder while it was not paused, for its speed.
+    rate_samples: List["tuple[float, int]"] = field(default_factory=list)
 
     @property
     def separate_audio(self) -> bool:
@@ -310,6 +314,37 @@ class SessionManager:
             self._stop_process(session)
         shutil.rmtree(session.directory, ignore_errors=True)
 
+    def snapshot(self) -> List[Dict[str, Any]]:
+        """What each open session is doing, for the activity page."""
+        with self._lock:
+            sessions = list(self._sessions.values())
+        now = time.monotonic()
+        result: List[Dict[str, Any]] = []
+        for session in sessions:
+            hash_, _, filename = session.key.partition("/")
+            through = encoded_through(produced_indexes(session.directory), session.start_segment)
+            samples = list(session.rate_samples)
+            speed = None
+            if len(samples) >= 2 and samples[-1][0] > samples[0][0] and samples[-1][1] > samples[0][1]:
+                speed = (samples[-1][1] - samples[0][1]) * session.segment_seconds / (samples[-1][0] - samples[0][0])
+            result.append({
+                "id": session.id,
+                "hash": hash_,
+                "filename": filename,
+                "encoder": session.encoder,
+                "hdr": session.hdr,
+                "levels": [r.height for r in session.ladder],
+                "duration": session.duration,
+                "position_seconds": session.requested * session.segment_seconds,
+                "encoded_seconds": min(session.duration, (through + 1) * session.segment_seconds),
+                "paused": session.paused,
+                "speed": round(speed, 2) if speed is not None else None,
+                "restarts": max(0, session.runs - 1),
+                "idle_seconds": int(now - session.last_request),
+                "failed": session.dead,
+            })
+        return result
+
     def keys(self) -> List[str]:
         """The files that have an encode session open."""
         with self._lock:
@@ -425,6 +460,7 @@ class SessionManager:
         session.start_segment = index
         session.progress_mark = -1
         session.progress_at = time.monotonic()
+        session.rate_samples.clear()
         log.event(f"HLS session {session.id[:8]}: encoding from segment {index} ({session.encoder}, run {session.runs})")
 
     @staticmethod
@@ -643,6 +679,11 @@ class SessionManager:
         now = time.monotonic()
         through = encoded_through(indexes, session.start_segment)
         waiting_for_download = session.growing is not None and not session.growing.complete()
+        if proc is not None and proc.poll() is None and not session.paused:
+            session.rate_samples.append((now, through))
+            del session.rate_samples[: max(0, len(session.rate_samples) - RATE_WINDOW_SAMPLES)]
+        else:
+            session.rate_samples.clear()
         if proc is None or proc.poll() is not None or session.paused or waiting_for_download or through != session.progress_mark:
             session.progress_mark = through
             session.progress_at = now

@@ -88,7 +88,7 @@ describe("HomeScreen rows", () => {
     await flushPromises();
     expect(wrapper.find(".spinner").exists()).toBe(false);
     expect(wrapper.find(".home-empty").text()).toBe("Search for a movie or show to get started.");
-    expect(wrapper.findAll(".home-shortcut")).toHaveLength(4);
+    expect(wrapper.findAll(".home-shortcut")).toHaveLength(5);
   });
 
   it("still shows local rows and the empty state when /api/home fails", async () => {
@@ -186,6 +186,7 @@ describe("HomeScreen navigation", () => {
     ["History", "/search/[history]"],
     ["Latest releases", "/search/"],
     ["Favorites", "/search/[favorites]"],
+    ["Activity", "/activity"],
     ["Settings", "/settings"],
   ])("the %s shortcut goes to %s", async (label, path) => {
     mockData({ series: [], movies: [], keep: [], recent: [] });

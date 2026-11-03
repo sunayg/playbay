@@ -24,7 +24,7 @@ test("/settings loads and lists categories", async ({ page }) => {
 test("the PWA manifest, favicon, service worker and logo are served", async ({ request }) => {
   const manifest = await request.get("/manifest.json");
   expect(manifest.status()).toBe(200);
-  expect((await manifest.json()).short_name).toBe("Rapidbay");
+  expect((await manifest.json()).short_name).toBe("PlayBay");
   for (const path of ["/favicon.png", "/sw.js", "/lib/playbay-logo.svg"]) {
     expect((await request.get(path)).status(), path).toBe(200);
   }

@@ -106,6 +106,7 @@ const goHistory = () => void router.push("/search/[history]");
 const goTrending = () => void router.push("/search/");
 const goFavorites = () => void router.push("/search/[favorites]");
 const goSettings = () => void router.push("/settings");
+const goActivity = () => void router.push("/activity");
 
 onMounted(() => {
   refreshLibrary();
@@ -164,6 +165,10 @@ onBeforeUnmount(() => {
         <button type="button" class="home-shortcut" @click="goFavorites">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6C19 16.5 12 21 12 21z" /></svg>
           <span>Favorites</span>
+        </button>
+        <button type="button" class="home-shortcut" @click="goActivity">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4" /></svg>
+          <span>Activity</span>
         </button>
         <button type="button" class="home-shortcut" @click="goSettings">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></svg>

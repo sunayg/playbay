@@ -51,3 +51,37 @@ export interface HlsDiagnostics {
   configured_heights: number[];
   warnings: string[];
 }
+
+export interface ActivityStream {
+  id: string;
+  hash: string;
+  filename: string;
+  encoder: string;
+  hdr: string;
+  levels: number[];
+  duration: number;
+  position_seconds: number;
+  encoded_seconds: number;
+  paused: boolean;
+  speed: number | null;
+  restarts: number;
+  idle_seconds: number;
+  failed: boolean;
+}
+
+export interface ActivityDownload {
+  hash: string;
+  filename: string;
+  status: string | null;
+  progress: number | null;
+  peers: number | null;
+  download_rate: number | null;
+  size: number | null;
+  age_seconds: number | null;
+}
+
+export interface Activity {
+  streams: ActivityStream[];
+  downloads: ActivityDownload[];
+  disk: { total?: number; free?: number };
+}

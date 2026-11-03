@@ -277,6 +277,70 @@ class RapidBayDaemon:
                 result[magnet_hash][filename] = self.get_file_status(magnet_hash, filename, viewer=False)
         return result
 
+    def activity(self) -> Dict[str, Any]:
+        """The open streams, and every file that is downloading or kept, for the activity page."""
+        downloads: List[Dict[str, Any]] = []
+        seen: Set[Tuple[str, str]] = set()
+        for magnet_hash, files in self.downloads().items():
+            for filename, status in files.items():
+                if os.path.splitext(filename)[1][1:] not in settings.VIDEO_EXTENSIONS:
+                    continue
+                seen.add((magnet_hash, filename))
+                if status.get("status") == FileStatus.READY:
+                    continue  # listed below, from the output folder
+                downloads.append({
+                    "hash": magnet_hash, "filename": filename, "status": status.get("status"),
+                    "progress": status.get("progress"), "peers": status.get("peers"),
+                    "download_rate": status.get("download_rate"), "size": None, "age_seconds": None,
+                })
+        now = time.time()
+        with contextlib.suppress(OSError):
+            for magnet_hash in os.listdir(settings.OUTPUT_DIR):
+                directory = _get_output_dir(magnet_hash)
+                if not _is_valid_magnet_hash(magnet_hash) or not os.path.isdir(directory):
+                    continue
+                for name in os.listdir(directory):
+                    if os.path.splitext(name)[1][1:] not in settings.VIDEO_EXTENSIONS:
+                        continue
+                    stat = os.stat(os.path.join(directory, name))
+                    downloads.append({
+                        "hash": magnet_hash, "filename": name, "status": FileStatus.READY, "progress": 1.0,
+                        "peers": None, "download_rate": None, "size": stat.st_size,
+                        "age_seconds": int(now - stat.st_mtime),
+                    })
+        disk: Dict[str, int] = {}
+        with contextlib.suppress(OSError):
+            usage = shutil.disk_usage(settings.DOWNLOAD_DIR)
+            disk = {"total": usage.total, "free": usage.free}
+        return {"streams": self.sessions.snapshot(), "downloads": downloads, "disk": disk}
+
+    def remove_file(self, magnet_hash: str, filename: str) -> bool:
+        """Delete a kept file with its subtitles, and its torrent's download once no kept file of it is left.
+        Returns False when the arguments do not name a file here."""
+        if not _is_valid_magnet_hash(magnet_hash) or filename != os.path.basename(filename) or not filename:
+            return False
+        output_dir = _get_output_dir(magnet_hash)
+        output_path = _get_output_filepath(magnet_hash, filename)
+        if not _is_safe_subpath(settings.OUTPUT_DIR, output_path) or not os.path.isfile(output_path):
+            return False
+        self.sessions.close_key(f"{magnet_hash}/{filename}")
+        stem = os.path.splitext(filename)[0]
+        for name in os.listdir(output_dir):
+            if name == filename or name.startswith(stem + "."):
+                with contextlib.suppress(OSError):
+                    os.remove(os.path.join(output_dir, name))
+        kept_videos = [n for n in os.listdir(output_dir) if os.path.splitext(n)[1][1:] in settings.VIDEO_EXTENSIONS]
+        if not kept_videos:
+            shutil.rmtree(output_dir, ignore_errors=True)
+            with self.torrent_client.locks.lock(magnet_hash):
+                h = self.torrent_client.torrents.get(magnet_hash)
+                if h:
+                    self._discard_torrent(magnet_hash, h)
+                else:
+                    shutil.rmtree(os.path.join(settings.DOWNLOAD_DIR, magnet_hash), ignore_errors=True)
+        self._notify_state_change()
+        return True
+
     def session_torrents(self) -> List[str]:
         return [h.name() for h in self.torrent_client.session.get_torrents()]
 

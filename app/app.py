@@ -1519,6 +1519,27 @@ class CastLinkResponse(BaseModel):
     origin: str = ""  # where the TV should fetch from; empty means where the page came from
 
 
+@app.get("/api/activity")
+def activity(_: None = Depends(authorize)) -> Dict[str, Any]:
+    """Open streams, downloads and kept files, and free disk space."""
+    return daemon.activity()
+
+
+@app.post("/api/activity/streams/{session_id}/end")
+def end_stream(session_id: str, _: None = Depends(authorize)) -> Dict[str, bool]:
+    daemon.sessions.close(session_id)
+    return {"ok": True}
+
+
+@app.post("/api/activity/downloads/{magnet_hash}/{filename}/remove")
+def remove_download(magnet_hash: str, filename: str, _: None = Depends(authorize)) -> Dict[str, bool]:
+    """Stop a download, or delete a kept file."""
+    if daemon.remove_file(magnet_hash, filename):
+        return {"ok": True}
+    daemon.cancel_download(magnet_hash, filename)  # not a kept file: a download in progress
+    return {"ok": True}
+
+
 @app.get("/api/hls_diagnostics")
 def hls_diagnostics_report(_: None = Depends(authorize)) -> Dict[str, Any]:
     return hls_diagnostics.report()
