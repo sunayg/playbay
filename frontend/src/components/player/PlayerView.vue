@@ -45,6 +45,9 @@ const video = ref<HTMLVideoElement | null>(null);
 const hovering = ref(true);
 const openMenu = ref<"" | "episodes" | "tracks">("");
 const paused = ref(true);
+// The picture is waiting for data (starting, seeking, or the connection fell behind the encoder).
+const buffering = ref(false);
+let bufferingTimer: ReturnType<typeof setTimeout> | undefined;
 const currentTime = ref(0);
 const duration = ref(0);
 const volume = ref(1);
@@ -336,6 +339,21 @@ function onTimeUpdate(): void {
   if (el && progressCountsAsWatched(el.currentTime, knownDuration())) noteWatched();
 }
 
+// A short wait is not worth a spinner, so it shows only once the wait has lasted a moment.
+function startBuffering(): void {
+  if (bufferingTimer !== undefined || buffering.value) return;
+  bufferingTimer = setTimeout(() => {
+    bufferingTimer = undefined;
+    buffering.value = true;
+  }, 400);
+}
+
+function stopBuffering(): void {
+  clearTimeout(bufferingTimer);
+  bufferingTimer = undefined;
+  buffering.value = false;
+}
+
 function onPause(): void {
   syncPlayback();
   const el = video.value;
@@ -475,6 +493,7 @@ watch(video, begin);
 onBeforeUnmount(() => {
   disposed = true;
   clearTimeout(hideTimer);
+  clearTimeout(bufferingTimer);
   clearInterval(positionTimer);
   for (const name of REVEAL_EVENTS) document.removeEventListener(name, reveal);
   episodes.dispose();
@@ -511,6 +530,13 @@ onBeforeUnmount(() => {
       :aria-label="displayTitle || 'Video'"
       @touchstart.passive="onVideoTouchStart"
       @click="onVideoClick"
+      @loadstart="startBuffering"
+      @waiting="startBuffering"
+      @seeking="startBuffering"
+      @playing="stopBuffering"
+      @canplay="stopBuffering"
+      @seeked="stopBuffering"
+      @emptied="stopBuffering"
       @play="onPlay"
       @pause="onPause"
       @timeupdate="onTimeUpdate"
@@ -530,7 +556,11 @@ onBeforeUnmount(() => {
         :src="subtitle.url"
       />
     </video>
-    <div v-else class="player-unsupported" role="status">
+    <div v-if="buffering && supported && url" class="player-buffering" role="status" aria-live="polite">
+      <span class="player-buffering-ring" aria-hidden="true"></span>
+      <span class="sr-only">Buffering</span>
+    </div>
+    <div v-if="!(supported && url)" class="player-unsupported" role="status">
       <p>This file's format can't be played in the browser.</p>
       <a :href="fileLink" download>Download the file</a>
     </div>
@@ -659,6 +689,17 @@ onBeforeUnmount(() => {
 .player.controls-hidden { cursor: none; }
 .player-video { width: 100%; height: 100%; object-fit: contain; background: #000; outline: none; }
 .player-video::cue { background: rgba(0, 0, 0, 0.6); font: 600 1.15em/1.3 system-ui, sans-serif; }
+.player-buffering { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.player-buffering-ring {
+  width: 56px;
+  height: 56px;
+  border: 5px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: player-buffering-rotate 0.9s linear infinite;
+}
+@keyframes player-buffering-rotate { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .player-buffering-ring { animation-duration: 3s; } }
 .player-unsupported { display: grid; gap: var(--space-3); text-align: center; padding: var(--space-5); color: var(--text-dim); }
 .player-unsupported a { color: var(--link); }
 

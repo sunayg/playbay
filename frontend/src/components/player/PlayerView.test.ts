@@ -697,6 +697,21 @@ describe("tapping the picture", () => {
   });
 });
 
+describe("buffering indicator", () => {
+  it("shows once a wait has lasted a moment and goes when playback resumes", async () => {
+    const { video } = await mountPlayer();
+    await video.dispatchEvent(new Event("waiting"));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(wrapper!.find(".player-buffering").exists()).toBe(false); // a short wait shows nothing
+    await new Promise((r) => setTimeout(r, 450));
+    await flushPromises();
+    expect(wrapper!.find(".player-buffering").exists()).toBe(true);
+    await video.dispatchEvent(new Event("playing"));
+    await flushPromises();
+    expect(wrapper!.find(".player-buffering").exists()).toBe(false);
+  });
+});
+
 describe("chromecast button", () => {
   const chromeUa = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
