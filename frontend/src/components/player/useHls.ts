@@ -98,9 +98,9 @@ export async function attachHls(video: HTMLVideoElement, url: string, options: H
     // Subtitles come from EXT-X-MEDIA in the master playlist; skip the
     // embedded CEA-608/708 captions so they do not render alongside.
     enableCEA708Captions: false,
-    // Adaptive bitrate: start from a bandwidth estimate and never fetch more pixels than
-    // the player shows.
-    capLevelToPlayerSize: true,
+    // Adaptive bitrate starts from a bandwidth estimate. The level is not capped to the player's size: resizing
+    // the window or leaving fullscreen would then switch renditions mid-playback, and a switch to a variant whose
+    // next segments are not encoded yet leaves the picture frozen until the encoder gets there.
     abrEwmaDefaultEstimate: 2_000_000,
   });
   let dead = false;
