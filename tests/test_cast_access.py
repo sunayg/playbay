@@ -117,8 +117,8 @@ def session_client(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> TestC
     )
     calls: list[bool] = []
 
-    def master(session_id: str, magnet_hash: str, filename: str, subtitles: bool = True) -> str:
-        calls.append(subtitles)
+    def master(session_id: str, magnet_hash: str, filename: str, subtitles: bool = True, for_cast: bool = False) -> str:
+        calls.append(subtitles and not for_cast)
         return "#EXTM3U\nplaylist_v0.m3u8\n"
 
     monkeypatch.setattr(app_module, "daemon", SimpleNamespace(sessions=_FakeSessions(session), session_master_playlist=master), raising=False)

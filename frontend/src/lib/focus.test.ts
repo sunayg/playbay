@@ -55,6 +55,11 @@ describe("tv mode", () => {
     expect(isTvUserAgent("Mozilla/5.0 (Linux; Android 12; Pixel 6)")).toBe(false);
     expect(isTvUserAgent("Mozilla/5.0 (Linux; Tizen TV)")).toBe(false);
   });
+  it("recognises the Hisense VIDAA browser, which has no TV word in its agent", () => {
+    const hisense = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 WebExplorer/8.3.2 Safari/537.36";
+    expect(isTvUserAgent(hisense)).toBe(true);
+    expect(isTvUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36")).toBe(false);
+  });
   it("adds the tv-ui class", () => {
     expect(applyTvMode("Mozilla/5.0 (Linux; Android 11; Google TV)")).toBe(true);
     expect(document.documentElement.classList.contains("tv-ui")).toBe(true);

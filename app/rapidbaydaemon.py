@@ -623,8 +623,11 @@ class RapidBayDaemon:
         )
         return filepath, growing
 
-    def session_master_playlist(self, session_id: str, magnet_hash: str, filename: str, subtitles: bool = True) -> str | None:
-        """Master playlist of a session: every quality level, plus the file's subtitles."""
+    def session_master_playlist(
+        self, session_id: str, magnet_hash: str, filename: str, subtitles: bool = True, for_cast: bool = False
+    ) -> str | None:
+        """Master playlist of a session: every quality level, plus the file's subtitles. For a Chromecast, only
+        the levels it can decode."""
         session = self.sessions.get(session_id)
         if session is None:
             return None
@@ -637,7 +640,12 @@ class RapidBayDaemon:
                 session.audio_tracks, len(session.ladder), "playlist", _describe_audio
             )
         lines += hls_ladder.stream_inf_lines(
-            session.ladder, "playlist", session.has_audio, bool(vtts), audio_group=session.separate_audio
+            session.ladder,
+            "playlist",
+            session.has_audio,
+            bool(vtts),
+            audio_group=session.separate_audio,
+            max_width=hls_ladder.CHROMECAST_MAX_WIDTH if for_cast else None,
         )
         return "\n".join(lines) + "\n"
 

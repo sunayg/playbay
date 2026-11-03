@@ -200,6 +200,15 @@ var ChromecastJS = function(scope, reciever) {
                 TriggerEvent('disconnect')
             }
             TriggerEvent('state', that.Media.state)
+            // The TV loaded the request and then could not play it: say so, as nothing else reports it.
+            if (that.Media.state === 'IDLE') {
+                var session = cast.framework.CastContext.getInstance().getCurrentSession()
+                var media = session && session.getMediaSession && session.getMediaSession()
+                if (media && media.idleReason === 'ERROR') {
+                    var extra = media.extendedStatus && media.extendedStatus.detailedErrorCode
+                    TriggerEvent('error', 'The TV could not play this video' + (extra ? ' (error ' + extra + ')' : '') + '.')
+                }
+            }
         })
         that.Available = true;
         TriggerEvent('available')

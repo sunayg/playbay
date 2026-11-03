@@ -21,8 +21,11 @@ export function isTextEntry(el: Element | null): boolean {
   return NON_TEXT_INPUT_TYPES.indexOf(((el as HTMLInputElement).type || "text").toLowerCase()) === -1;
 }
 
+// Hisense VIDAA's built-in browser: Chromium on Linux, which says "WebExplorer/<version>" and no TV word.
+export const VIDAA_USER_AGENT = /WebExplorer\/|VIDAA|Hisense/i;
+
 export function isTvUserAgent(ua: string): boolean {
-  return /Android/i.test(ua) && TV_USER_AGENT.test(ua);
+  return (/Android/i.test(ua) && TV_USER_AGENT.test(ua)) || VIDAA_USER_AGENT.test(ua);
 }
 
 export function applyTvMode(ua: string = navigator.userAgent || ""): boolean {

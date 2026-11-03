@@ -24,6 +24,8 @@ VAAPI = "h264_vaapi"
 VAAPI_DEVICE = "/dev/dri/renderD128"
 # High profile, level 4.1: covers every rung up to 1080p60 and is what CODECS advertises.
 H264_CODEC_TAG = "avc1.640029"
+# The widest picture a Chromecast is offered: a 1080p-class decoder. A scope film at "1080" is 2376 wide, level 5.0.
+CHROMECAST_MAX_WIDTH = 1920
 AAC_CODEC_TAG = "mp4a.40.2"
 
 
@@ -485,10 +487,18 @@ def audio_media_lines(tracks: Sequence[AudioTrack], first_variant: int, prefix: 
 
 
 def stream_inf_lines(
-    ladder: Sequence[Rendition], prefix: str, has_audio: bool, subtitles_group: bool, audio_group: bool = False
+    ladder: Sequence[Rendition],
+    prefix: str,
+    has_audio: bool,
+    subtitles_group: bool,
+    audio_group: bool = False,
+    max_width: int | None = None,
 ) -> List[str]:
-    """EXT-X-STREAM-INF entries (tag line plus URI line) for every rendition, best first."""
+    """EXT-X-STREAM-INF entries (tag line plus URI line) for every rendition, best first. `max_width` leaves out
+    the renditions wider than that (the lowest one is always kept); the playlists keep their numbers."""
     lines: List[str] = []
+    if max_width is not None:
+        ladder = [r for r in ladder if r.width <= max_width] or list(ladder)[-1:]
     codecs = f"{H264_CODEC_TAG},{AAC_CODEC_TAG}" if has_audio else H264_CODEC_TAG
     for r in ladder:
         tag = f'#EXT-X-STREAM-INF:BANDWIDTH={r.bandwidth},RESOLUTION={r.width}x{r.height},CODECS="{codecs}"'

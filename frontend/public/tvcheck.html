@@ -95,14 +95,29 @@ function send() {
 }
 
 var pending = null;
-document.addEventListener("keydown", function (e) {
-  var item = { key: e.key, code: e.code, keyCode: e.keyCode, which: e.which };
-  report.keys.push(item);
-  document.getElementById("keys").textContent = "key: " + (e.key || "?") + "   keyCode: " + e.keyCode + (e.code ? "   code: " + e.code : "");
+report.events = [];
+function note(text) {
+  document.getElementById("keys").textContent = text;
+  if (report.events.length < 60) report.events.push(text);
   if (pending) clearTimeout(pending);
   pending = setTimeout(send, 800);
-  if (e.keyCode >= 37 && e.keyCode <= 40) e.preventDefault();
-}, false);
+}
+function onKey(type, e) {
+  var item = { type: type, key: e.key, code: e.code, keyCode: e.keyCode, which: e.which };
+  if (type === "keydown") report.keys.push(item);
+  note(type + ": key=" + (e.key || "?") + " keyCode=" + e.keyCode + (e.code ? " code=" + e.code : ""));
+  if (type === "keydown" && e.keyCode >= 37 && e.keyCode <= 40) e.preventDefault();
+}
+document.addEventListener("keydown", function (e) { onKey("keydown", e); }, true);
+document.addEventListener("keyup", function (e) { onKey("keyup", e); }, true);
+document.addEventListener("keypress", function (e) { onKey("keypress", e); }, true);
+/* A pointer-style remote (a cursor you move) sends these instead of keys. */
+var moves = 0;
+document.addEventListener("mousemove", function () { if (++moves % 20 === 1) note("pointer moving (mousemove)"); }, true);
+document.addEventListener("wheel", function (e) { note("wheel deltaY=" + e.deltaY); }, true);
+document.addEventListener("click", function (e) { note("click at " + e.clientX + "," + e.clientY); }, true);
+document.addEventListener("touchstart", function () { note("touchstart"); }, true);
+window.addEventListener("scroll", function () { note("scroll y=" + window.pageYOffset); }, true);
 
 send();
 </script>

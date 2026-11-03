@@ -77,6 +77,18 @@ def test_stream_inf_lines():
     assert "SUBTITLES" not in stream_inf_lines(ladder, "m", False, False)[0]
 
 
+def test_a_chromecast_is_not_offered_renditions_wider_than_1080p():
+    # A scope film: its "1080" level is 2376 wide, past what a Chromecast decodes.
+    ladder = plan_ladder(2560, 1164, [1080, 720, 480])
+    assert ladder[0].width > hls_ladder.CHROMECAST_MAX_WIDTH
+    lines = stream_inf_lines(ladder, "playlist", True, False, max_width=hls_ladder.CHROMECAST_MAX_WIDTH)
+    uris = [line for line in lines if not line.startswith("#")]
+    assert uris == ["playlist_v1.m3u8", "playlist_v2.m3u8"]  # the playlists keep their numbers
+    # Nothing narrow enough: the lowest one stays, so there is something to play.
+    assert [line for line in stream_inf_lines(ladder, "playlist", True, False, max_width=100) if not line.startswith("#")] == ["playlist_v2.m3u8"]
+    assert len(stream_inf_lines(ladder, "playlist", True, False)) == 6
+
+
 def test_encoder_detection_prefers_software_unless_vaapi_really_works(monkeypatch, tmp_path):
     hls_ladder.reset_encoder_cache()
     device = tmp_path / "renderD128"
