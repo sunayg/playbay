@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        RapidBay encodes video with ffmpeg and picks an encoder by testing what your machine can do. The diagnostics report says what it found and why, which makes most hardware problems quick to sort out.
+        PlayBay encodes video with ffmpeg and picks an encoder by testing what your machine can do. The diagnostics report says what it found and why, which makes most hardware problems quick to sort out.
   - type: textarea
     id: diagnostics
     attributes:

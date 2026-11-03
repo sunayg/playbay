@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 876 224" role="img" aria-label="PlayBay">
+  <defs>
+    <linearGradient id="bay" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8e8e8"/>
+      <stop offset="1" stop-color="#8a8a8a"/>
+    </linearGradient>
+  </defs>
+  <circle cx="112" cy="112" r="100" fill="#fff"/>
+  <path d="M88 64 L158 112 L88 160 Z" fill="#000"/>
+  <text x="248" y="168" font-family="'Helvetica Neue', Arial, system-ui, sans-serif" font-weight="800" font-size="150" letter-spacing="-4">
+    <tspan fill="#fff">Play</tspan><tspan fill="url(#bay)">Bay</tspan>
+  </text>
+</svg>

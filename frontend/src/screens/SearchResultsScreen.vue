@@ -19,7 +19,7 @@ import {
 } from "../lib/results";
 
 // Served by the backend from public/lib; kept out of the bundler on purpose.
-const LOGO = "/lib/rapidbay-logo.png";
+const LOGO = "/lib/playbay-logo.svg";
 
 const route = useRoute();
 const router = useRouter();
@@ -362,8 +362,8 @@ onBeforeUnmount(() => {
 <template>
   <div class="results-root" data-screen="search-results-screen">
     <header class="topbar">
-      <RouterLink class="home-logo-link" to="/" aria-label="RapidBay home">
-        <img class="home-logo" :src="LOGO" alt="RapidBay" />
+      <RouterLink class="home-logo-link" to="/" aria-label="PlayBay home">
+        <img class="home-logo" :src="LOGO" alt="PlayBay" />
       </RouterLink>
       <form v-if="!pinned" class="home-search" role="search" @submit.prevent="onSubmit">
         <svg class="home-search-icon" viewBox="0 0 24 24" aria-hidden="true">

@@ -93,7 +93,7 @@ export async function castVideo(request: CastRequest): Promise<string | null> {
   const { cc, video } = request;
   if (!cc || !video) return "Chromecast is not available in this browser.";
   if (LOCAL_HOST.test(window.location.hostname)) {
-    return "Open RapidBay by its network address to cast. A TV cannot reach localhost.";
+    return "Open PlayBay by its network address to cast. A TV cannot reach localhost.";
   }
   const session = /^\/api\/hls\/([^/]+)\/master\.m3u8$/.exec(request.videoUrl || "");
   const parts = session ? (request.magnetHash ? [request.videoUrl, request.magnetHash] : null) : /^\/play\/([^/]+)\/(.*)$/.exec(request.videoUrl || "");
@@ -121,7 +121,7 @@ export async function castVideo(request: CastRequest): Promise<string | null> {
       {
         content: session ? prefix + "session/" + session[1] + "/master.m3u8" : (castUrl(request.videoUrl) as string),
         contentType: session ? "application/x-mpegURL" : "video/mp4",
-        title: request.title || "RapidBay",
+        title: request.title || "PlayBay",
         subtitles,
         time: video.currentTime || 0,
         paused: false,

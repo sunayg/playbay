@@ -75,7 +75,7 @@ FIELDS: dict[str, Field] = dict(
         _f("HLS_LIMIT_BY_SPEED", "streaming", "bool", "Limit quality levels to what this machine can encode", help="A short speed test runs at startup. If the machine could not encode every quality level faster than real time, the highest ones are left out so playback does not stall."),
         _f("HLS_SEGMENT_DURATION", "streaming", "int", "Segment duration (seconds)", min=1),
         _f("HLS_START_SECONDS", "streaming", "int", "Start buffer (seconds of video)", help="Playback of a file that is still downloading begins once this much of the video has arrived. It is worked out from the file's own length and size.", min=1, max=600),
-        _f("CAST_ORIGIN", "streaming", "url", "Cast address", help="The address a Chromecast can reach RapidBay at, for example http://192.168.1.20:5050. Leave empty to use the address you opened the page at, which a TV outside your Tailscale network cannot reach."),
+        _f("CAST_ORIGIN", "streaming", "url", "Cast address", help="The address a Chromecast can reach PlayBay at, for example http://192.168.1.20:5050. Leave empty to use the address you opened the page at, which a TV outside your Tailscale network cannot reach."),
         _f("MAX_PARALLEL_HLS_STREAMS", "streaming", "int", "Max parallel HLS streams", min=1),
         _f("HLS_PREFETCH_BYTES", "streaming", "int", "Prefetch window (bytes)", min=1),
         _f("AAC_BITRATE", "conversion", "bitrate", "AAC bitrate", help="For example 256k."),

@@ -19,7 +19,7 @@ import { magnetPath, searchPath } from "../lib/magnet";
 import { titleSearchQuery, type HomeTitle } from "../lib/titles";
 
 // Served by the backend from public/lib; kept out of the bundler on purpose.
-const LOGO = "/lib/rapidbay-logo.png";
+const LOGO = "/lib/playbay-logo.svg";
 
 const router = useRouter();
 const route = useRoute();
@@ -133,8 +133,8 @@ onBeforeUnmount(() => {
 <template>
   <div class="home-root" data-screen="search-screen">
     <header class="topbar">
-      <RouterLink class="home-logo-link" to="/" aria-label="RapidBay home">
-        <img class="home-logo" :src="LOGO" alt="RapidBay" />
+      <RouterLink class="home-logo-link" to="/" aria-label="PlayBay home">
+        <img class="home-logo" :src="LOGO" alt="PlayBay" />
       </RouterLink>
       <form class="home-search" role="search" @submit.prevent="onSubmit">
         <svg class="home-search-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
       </nav>
     </header>
     <main class="home-stage">
-      <h1 class="sr-only">RapidBay</h1>
+      <h1 class="sr-only">PlayBay</h1>
       <div class="home-rows">
         <p v-if="isEmpty" class="empty-state home-empty">Search for a movie or show to get started.</p>
         <LoadingSpinner v-else-if="!homeLoaded" inline />

@@ -9,7 +9,7 @@ const home = (router.options.history.base || "") + "/";
 
 <template>
   <header class="top">
-    <a :href="home" class="back">&larr; RapidBay</a>
+    <a :href="home" class="back">&larr; PlayBay</a>
     <h1>Settings</h1>
   </header>
   <main>

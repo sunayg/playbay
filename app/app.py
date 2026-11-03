@@ -331,10 +331,10 @@ def custom_openapi(request: Request) -> Dict[str, Any]:
 
     host = settings.OPENAPI_HOST or str(request.base_url).rstrip("/")
     return get_openapi(
-        title="RapidBay",
+        title="PlayBay",
         version="1.0.0",
         routes=app.routes,
-        servers=[{"url": host, "description": "RapidBay API"}],
+        servers=[{"url": host, "description": "PlayBay API"}],
     )
 
 

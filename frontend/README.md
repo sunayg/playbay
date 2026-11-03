@@ -1,4 +1,4 @@
-# RapidBay frontend (Vue 3)
+# PlayBay frontend (Vue 3)
 
 Vue 3 + TypeScript + Vite. The backend serves the build (`frontend/dist`, or `FRONTEND_DIR`) at `/`: real files (`assets/`, `lib/`,
 `manifest.json`, `favicon.png`, `sw.js`, `login.html`) as-is, and every other path (`/search/...`, `/magnet/...`,

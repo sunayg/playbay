@@ -1,6 +1,6 @@
-# RapidBay
+# PlayBay
 
-RapidBay is a self-hosted video service and torrent client that makes playing videos from torrents as easy as:
+PlayBay is a self-hosted video service and torrent client that makes playing videos from torrents as easy as:
 
 1. Opening the web app on a phone, laptop, tablet or smart TV.
 2. Searching for content.
@@ -8,7 +8,7 @@ RapidBay is a self-hosted video service and torrent client that makes playing vi
 4. Pressing play. It starts while the file is still downloading and converting.
 5. Watching on the device, or casting to AppleTV/Chromecast.
 
-This repository is a fork of [hauxir/rapidbay](https://github.com/hauxir/rapidbay). It keeps the Python backend and the MIT license, and changes how the app looks, streams and is configured. See [What is different in this fork](#what-is-different-in-this-fork).
+PlayBay is a fork of [RapidBay by hauxir](https://github.com/hauxir/rapidbay), renamed because it has diverged far from the original (internal names such as the `rapidbay` Docker image, the `RAPIDBAY_PORT` variable and the `rapidbay` service in the compose files are unchanged for now). It keeps the Python backend and the MIT license, and changes how the app looks, streams and is configured. See [What is different in this fork](#what-is-different-in-this-fork).
 
 ## Features
 
@@ -31,20 +31,20 @@ This repository is a fork of [hauxir/rapidbay](https://github.com/hauxir/rapidba
 -   **Settings page** at `/settings`: 34 options in seven categories, saved to `settings.json`, applied live where possible. See [Settings page](#settings-page).
 -   **Trending from TMDB.** The home rails show this week's worldwide trending titles when a TMDB key is set. The empty-search feed is now called "Latest releases".
 -   **Rich search is the only mode,** and a download can be cancelled from its screen.
--   **A local stack with a VPN.** `docker-compose.local.yml` runs RapidBay and Prowlarr behind an ExpressVPN tunnel (via [gluetun](https://github.com/qdm12/gluetun)), so searches and torrent traffic both leave through the VPN. See [Running the local stack](#running-the-local-stack).
+-   **A local stack with a VPN.** `docker-compose.local.yml` runs PlayBay and Prowlarr behind an ExpressVPN tunnel (via [gluetun](https://github.com/qdm12/gluetun)), so searches and torrent traffic both leave through the VPN. See [Running the local stack](#running-the-local-stack).
 -   **Hardware encoding and diagnostics.** On Linux with an Intel or AMD GPU mapped into the container, video is encoded and decoded on the GPU (VAAPI), after a test confirms it can honour the bitrates; otherwise it falls back to software. A diagnostics view under Settings > Streaming shows what was detected and why, a startup speed test drops quality levels the machine cannot keep up with, a stuck encoder is restarted, and an end-to-end playback test (real ffmpeg, seeks and restarts) runs in CI. See [Adaptive streaming](#adaptive-streaming) and [What works on which hardware](#what-works-on-which-hardware).
 
 ## Setting up a search backend
 
-RapidBay requires a torrent indexer for searching. You can use [Jackett](https://github.com/Jackett/Jackett), [Prowlarr](https://github.com/Prowlarr/Prowlarr), or both at the same time (results are merged and deduplicated).
+PlayBay requires a torrent indexer for searching. You can use [Jackett](https://github.com/Jackett/Jackett), [Prowlarr](https://github.com/Prowlarr/Prowlarr), or both at the same time (results are merged and deduplicated).
 
 ### Jackett
 
-See [how to set Jackett up with Docker](https://github.com/Jackett/Jackett#installation-using-docker). The [Jackett compose example](docker-compose.example.with.jackett.yml) shows how to connect it to RapidBay.
+See [how to set Jackett up with Docker](https://github.com/Jackett/Jackett#installation-using-docker). The [Jackett compose example](docker-compose.example.with.jackett.yml) shows how to connect it to PlayBay.
 
 ### Prowlarr
 
-See the [Prowlarr docs](https://wiki.servarr.com/prowlarr/installation). The [Prowlarr compose example](docker-compose.example.with.prowlarr.yml) shows how to connect it to RapidBay.
+See the [Prowlarr docs](https://wiki.servarr.com/prowlarr/installation). The [Prowlarr compose example](docker-compose.example.with.prowlarr.yml) shows how to connect it to PlayBay.
 
 ## Running
 
@@ -52,7 +52,7 @@ There is no published image for this fork, so build it from this repository.
 
 ### Running the local stack
 
-`docker-compose.local.yml` starts RapidBay and Prowlarr behind an ExpressVPN tunnel.
+`docker-compose.local.yml` starts PlayBay and Prowlarr behind an ExpressVPN tunnel.
 
 1. Copy `.env.example` to `.env` and `.env.vpn.example` to `.env.vpn`.
 2. In `.env.vpn`, set `OPENVPN_USER` and `OPENVPN_PASSWORD` to your ExpressVPN **manual-configuration** credentials (not your login email and password), and optionally `SERVER_COUNTRIES`.
@@ -63,9 +63,9 @@ There is no published image for this fork, so build it from this repository.
 docker compose --env-file .env --env-file .env.vpn -f docker-compose.local.yml up -d --build
 ```
 
-RapidBay is at <http://localhost:5050> (change it with `RAPIDBAY_PORT`) and Prowlarr at <http://localhost:9696>. After Prowlarr's first start, copy its API key (Settings > General) into `PROWLARR_API_KEY` in `.env.vpn` and run the command again. The `.env` files stay out of git.
+PlayBay is at <http://localhost:5050> (change it with `RAPIDBAY_PORT`) and Prowlarr at <http://localhost:9696>. After Prowlarr's first start, copy its API key (Settings > General) into `PROWLARR_API_KEY` in `.env.vpn` and run the command again. The `.env` files stay out of git.
 
-Without a VPN, `docker-compose.yml` runs RapidBay alone on port 5000.
+Without a VPN, `docker-compose.yml` runs PlayBay alone on port 5000.
 
 ### With Docker
 
@@ -128,7 +128,7 @@ If `PASSWORD` is set, the page uses it. If it is not, anyone who can reach the s
 
 ## Adaptive streaming
 
-RapidBay streams like Plex or Jellyfin: the download is kept as it is, and video is encoded only while someone watches it, only a little ahead of the playhead.
+PlayBay streams like Plex or Jellyfin: the download is kept as it is, and video is encoded only while someone watches it, only a little ahead of the playhead.
 
 - **Finished files:** opening a file starts an *encode session*. The player gets the whole timeline at once, so you can seek anywhere. A seek starts the encoder at that point (a few seconds), it runs a few minutes ahead of you and pauses, and segments well behind you are deleted. One ffmpeg process encodes every quality level (1080p, 720p, 480p and 360p by default, never above the source size) and the player switches between them to match your connection speed. A quality menu pins one. The session is removed a few minutes after you stop watching.
 - **Audio and subtitles:** every audio track of the file is offered as a language in the player's menu (English, French, Italian, and so on), and each text subtitle track and downloaded subtitle as a subtitle. Picture-based subtitles (PGS, VobSub) are not supported. A session opened while a file is still downloading lists the subtitles that exist at that moment.
@@ -196,7 +196,7 @@ The default setting downloads English subtitles. Add the env variable `SUBTITLE_
 
 ## Require a password
 
-Add the env variable `PASSWORD` to prompt for a password when opening RapidBay (or set it on the Settings page):
+Add the env variable `PASSWORD` to prompt for a password when opening PlayBay (or set it on the Settings page):
 
 ```
 -e PASSWORD=YOURPASSWORD
@@ -204,7 +204,7 @@ Add the env variable `PASSWORD` to prompt for a password when opening RapidBay (
 
 ## Registering as a handler for any magnet link
 
--   Go to `https://<RAPIDBAY_HOST>/registerHandler` and it should prompt you to register your running RapidBay instance as the default handler for torrent links on any torrent site.
+-   Go to `https://<RAPIDBAY_HOST>/registerHandler` and it should prompt you to register your running PlayBay instance as the default handler for torrent links on any torrent site.
 -   You can also paste a magnet link directly into the search bar to open it.
 
 ## Using debrid caching
@@ -218,7 +218,7 @@ Add the env variable `PASSWORD` to prompt for a password when opening RapidBay (
 
 The Kodi addon is served at `/app.kodi.py`. Setup steps are in the [upstream wiki](https://github.com/hauxir/rapidbay/wiki/Setting-up-Rapidbay-with-Kodi). They predate this fork, so some details may differ. The addon is not tested here.
 
-## Running RapidBay on a VPS
+## Running PlayBay on a VPS
 
 The [upstream wiki](https://github.com/hauxir/rapidbay/wiki/Setting-RapidBay-up-on-a-VPS-and-tunnel-torrent-traffic-through-NordVPN) describes tunnelling torrent traffic through NordVPN. The local stack above does the same with ExpressVPN and gluetun.
 
@@ -241,7 +241,7 @@ Design notes and plans are in [`docs/superpowers`](docs/superpowers).
 
 ## Responsible use
 
-RapidBay is a general-purpose, self-hosted torrent client and media player. It ships with no content and no list of sources. You are responsible for what you search for, download and stream, and for following the copyright laws and other rules that apply where you live. Only use it for content you have the right to access, such as public-domain, openly licensed or your own media.
+PlayBay is a general-purpose, self-hosted torrent client and media player. It ships with no content and no list of sources. You are responsible for what you search for, download and stream, and for following the copyright laws and other rules that apply where you live. Only use it for content you have the right to access, such as public-domain, openly licensed or your own media.
 
 ## License and credits
 
