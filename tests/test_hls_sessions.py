@@ -146,6 +146,15 @@ class _FakeProc:
     def poll(self):
         return self.returncode
 
+    def send_signal(self, _sig):
+        pass
+
+    def terminate(self):
+        self.returncode = -15
+
+    def wait(self, timeout=None):
+        return self.returncode
+
 
 def test_the_feeder_sends_only_what_has_arrived_and_finishes_when_the_file_is_whole(tmp_path, monkeypatch):
     monkeypatch.setattr(hs.time, "sleep", lambda _s: None)
@@ -529,3 +538,28 @@ def test_a_hardware_session_that_keeps_failing_makes_the_next_one_use_software(t
     assert manager.file_for(session, hs.segment_name(0, 0)) is None
     assert session.dead
     assert hs.hls_ladder.detect_encoder("auto") == hs.hls_ladder.SOFTWARE
+
+
+def test_stopping_a_running_encoder_drops_the_segment_it_cut_short(tmp_path):
+    manager = hs.SessionManager(str(tmp_path))
+    session = _session(duration=600.0, directory=str(tmp_path))
+    session.start_segment = 3
+    session.proc = _FakeProc()  # type: ignore[assignment]
+    for level in (0, 1):
+        for i in (0, 1, 2, 3, 4, 5):  # 0-2 are from an earlier run; 3-5 from this one, 5 written out as it was stopped
+            (tmp_path / hs.segment_name(level, i)).write_text("x")
+    manager._stop_process(session)
+    assert hs.produced_indexes(str(tmp_path), 0) == [0, 1, 2, 3, 4]
+    assert hs.produced_indexes(str(tmp_path), 1) == [0, 1, 2, 3, 4]
+
+
+def test_stopping_an_encoder_that_already_ended_keeps_its_last_segment(tmp_path):
+    manager = hs.SessionManager(str(tmp_path))
+    session = _session(duration=600.0, directory=str(tmp_path))
+    proc = _FakeProc()
+    proc.returncode = 0
+    session.proc = proc  # type: ignore[assignment]
+    for i in (0, 1, 2):
+        (tmp_path / hs.segment_name(0, i)).write_text("x")
+    manager._stop_process(session)
+    assert hs.produced_indexes(str(tmp_path), 0) == [0, 1, 2]

@@ -350,6 +350,7 @@ class SessionManager:
         session.paused = False
         if proc is None or proc.poll() is not None:
             return
+        start = session.start_segment
         with contextlib.suppress(OSError):
             proc.send_signal(signal.SIGCONT)  # a stopped process only sees SIGTERM once resumed
         with contextlib.suppress(OSError):
@@ -361,6 +362,19 @@ class SessionManager:
                 proc.kill()
             with contextlib.suppress(Exception):
                 proc.wait(timeout=5)
+        self._drop_cut_segments(session, start)
+
+    @staticmethod
+    def _drop_cut_segments(session: Session, start: int) -> None:
+        """A stopped encoder writes out the segment it was in the middle of, cut short, under the segment's own
+        name. Left there, the player gets a few frames where six seconds should be, and stalls at the gap. The
+        newest segment of each variant from that run goes, so that one is encoded again when it is asked for."""
+        for level in {int(m.group(1)) for n in os.listdir(session.directory) if (m := _SEGMENT_RE.match(n))}:
+            indexes = produced_indexes(session.directory, level)
+            last = encoded_through(indexes, start)
+            if last >= start:
+                with contextlib.suppress(OSError):
+                    os.remove(os.path.join(session.directory, segment_name(level, last)))
 
     def _start_process(self, session: Session, index: int) -> None:
         """Caller holds session.lock."""
