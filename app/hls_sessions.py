@@ -93,6 +93,9 @@ class Session:
     audio_copy: bool  # the audio can go into the stream as it is
     encoder: str
     hdr: str = "sdr"  # see hls_ladder.probe_dynamic_range
+    # Who the session is for ("" when not named). Each viewer of a file has an encoder of their own: one encoder
+    # can only be at one place in the file, and two viewers would keep moving it away from each other.
+    viewer: str = ""
     audio_tracks: List[hls_ladder.AudioTrack] = field(default_factory=list)
     growing: GrowingSource | None = None
     lock: threading.RLock = field(default_factory=threading.RLock)
@@ -237,17 +240,19 @@ class SessionManager:
 
     # -- lifecycle ---------------------------------------------------------------------------
 
-    def create(self, key: str, source: str, start_seconds: float = 0.0, growing: GrowingSource | None = None) -> Session:
-        """The session for a file, made on first use; its encode starts at `start_seconds`, where
+    def create(
+        self, key: str, source: str, start_seconds: float = 0.0, growing: GrowingSource | None = None, viewer: str = ""
+    ) -> Session:
+        """The session of a viewer for a file, made on first use; its encode starts at `start_seconds`, where
         the viewer is about to resume. Raises SessionError(reason) when it cannot be made."""
         # One creation at a time: the probes below take a moment, and two requests for the same file (a double
         # click, a second device) must not each open a session, nor several files together pass the limit.
         with self._create_lock:
-            return self._create(key, source, start_seconds, growing)
+            return self._create(key, source, start_seconds, growing, viewer)
 
-    def _create(self, key: str, source: str, start_seconds: float, growing: GrowingSource | None) -> Session:
+    def _create(self, key: str, source: str, start_seconds: float, growing: GrowingSource | None, viewer: str) -> Session:
         with self._lock:
-            existing = next((s for s in self._sessions.values() if s.key == key), None)
+            existing = next((s for s in self._sessions.values() if s.key == key and s.viewer == viewer), None)
             if existing and not existing.dead:
                 existing.last_request = time.monotonic()
                 return existing
@@ -283,7 +288,7 @@ class SessionManager:
             id=session_id, key=key, source=source, directory=directory, duration=duration,
             segment_seconds=settings.HLS_SEGMENT_DURATION, ladder=ladder, src_height=size[1],
             has_audio=has_audio, audio_copy=audio_copy, encoder=encoder,
-            audio_tracks=tracks, growing=growing, hdr=hdr,
+            audio_tracks=tracks, growing=growing, hdr=hdr, viewer=viewer,
         )
         if hdr == "dovi":
             log.event(f"HLS session {session.id[:8]}: Dolby Vision profile 5 has no HDR10 layer; its colours will look wrong")

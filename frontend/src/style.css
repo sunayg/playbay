@@ -95,6 +95,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   border-radius: var(--radius-lg);
   font: inherit;
 }
+/* TV browsers: a font that is known to be sans (VIDAA's system-ui is a wide monospace one that squeezes the
+   header), a search box that is never squeezed out, and bigger text to read from the sofa. */
+html.tv-ui body, html.tv-ui button, html.tv-ui input { font-family: Arial, Helvetica, sans-serif; }
+html.tv-ui .topbar { flex-wrap: wrap; }
+html.tv-ui .home-search { flex: 1 0 18rem; max-width: 520px; }
+html.tv-ui .home-search .form-control { height: 48px; font-size: 1.125rem; }
+html.tv-ui .home-shortcut { font-size: 1rem; }
 .home-search .form-control::placeholder { color: var(--text-dim); }
 .home-search .form-control:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--focus-ring); }
 .home-search-icon {

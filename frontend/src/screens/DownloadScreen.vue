@@ -23,6 +23,7 @@ import {
 import { getVideoPosition, reportLibraryEvents, saveToHistory } from "../lib/library";
 import { navigateBack } from "../lib/nav";
 import { decodeMagnetParam, get_hash, get_magnet_name, magnetPath } from "../lib/magnet";
+import { viewerId } from "../lib/viewer";
 
 const route = useRoute();
 const router = useRouter();
@@ -121,7 +122,7 @@ async function openSession(ready: boolean): Promise<void> {
   try {
     const start = getVideoPosition(magnet.value, filename.value);
     const data = await post<{ url?: string | null; reason?: string }>(
-      "/api/magnet/" + hash.value + "/" + encodeURIComponent(filename.value) + "/session?start=" + Math.floor(start),
+      "/api/magnet/" + hash.value + "/" + encodeURIComponent(filename.value) + "/session?start=" + Math.floor(start) + "&viewer=" + viewerId(),
     );
     if (stale()) return;
     if (data && data.url) {

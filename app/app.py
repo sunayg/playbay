@@ -1255,9 +1255,12 @@ class SessionResponse(BaseModel):
 
 
 @app.post("/api/magnet/{magnet_hash}/{filename}/session", response_model=SessionResponse)
-def open_session(magnet_hash: str, filename: str, start: float = 0.0, _: None = Depends(authorize)) -> Dict[str, Any]:
-    """Open the seekable, adaptive encode session for a finished file. `start` is where playback resumes."""
-    result = daemon.create_session(magnet_hash, filename, max(0.0, start))
+def open_session(
+    magnet_hash: str, filename: str, start: float = 0.0, viewer: str = "", _: None = Depends(authorize)
+) -> Dict[str, Any]:
+    """Open the seekable, adaptive encode session for a file. `start` is where playback resumes; `viewer` names the
+    device, which gets an encoder of its own (two devices at different places would fight over a shared one)."""
+    result = daemon.create_session(magnet_hash, filename, max(0.0, start), re.sub(r"[^A-Za-z0-9_-]", "", viewer)[:40])
     if not result.get("session"):
         return {"url": None, "reason": result.get("reason")}
     return {"url": f"/api/hls/{result['session']}/master.m3u8"}
@@ -1281,7 +1284,7 @@ def _session_response(session: hls_sessions.Session, name: str, subtitles: bool 
             raise HTTPException(status_code=404)
         return Response(hls_sessions.variant_playlist(session, level), media_type=mpegurl, headers={"Cache-Control": "no-store"})
     path = daemon.sessions.file_for(session, name)
-    if path is None:
+    if path is None or not os.path.isfile(path):  # gone since: an encoder restart clears what it left
         raise HTTPException(status_code=404)
     return FileResponse(path, media_type="video/mp4")
 

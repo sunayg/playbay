@@ -566,8 +566,8 @@ class RapidBayDaemon:
             return False, fraction
         return video_conversion.is_pipe_streamable(filepath, available), fraction
 
-    def create_session(self, magnet_hash: str, filename: str, start_seconds: float = 0.0) -> Dict[str, Any]:
-        """Open (or join) the seekable encode session for a file.
+    def create_session(self, magnet_hash: str, filename: str, start_seconds: float = 0.0, viewer: str = "") -> Dict[str, Any]:
+        """Open (or rejoin) the viewer's seekable encode session for a file.
 
         A finished file is read from the output folder. One that is still downloading is read
         as far as it has arrived, so the viewer can seek anywhere in what is already there.
@@ -587,7 +587,7 @@ class RapidBayDaemon:
                 return {"session": None, "reason": found}
             source, growing = found
         try:
-            session = self.sessions.create(f"{magnet_hash}/{filename}", source, start_seconds, growing)
+            session = self.sessions.create(f"{magnet_hash}/{filename}", source, start_seconds, growing, viewer)
         except hls_sessions.SessionError as e:
             return {"session": None, "reason": e.reason}
         return {"session": session.id}

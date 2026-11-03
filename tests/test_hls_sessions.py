@@ -469,6 +469,27 @@ def test_two_requests_for_one_file_open_one_session(tmp_path, monkeypatch):
     assert len(manager.keys()) == 1 and len({id(r) for r in results}) == 1
 
 
+def test_each_viewer_of_a_file_gets_an_encoder_of_their_own(tmp_path, monkeypatch):
+    # One shared encoder can only be at one place in the file: a TV at 0:00 and another device at 4:20 would
+    # keep pulling it back and forth, wiping each other's segments.
+    manager = hs.SessionManager(str(tmp_path / "s"))
+    monkeypatch.setattr(hs.os.path, "isfile", lambda p: True)
+    monkeypatch.setattr(hs, "probe_duration", lambda p: 60.0)
+    monkeypatch.setattr(hs.hls_ladder, "probe_video_size", lambda p: (1280, 720))
+    monkeypatch.setattr(hs.hls_ladder, "probe_audio_tracks", lambda p: [])
+    monkeypatch.setattr(hs.hls_ladder, "detect_encoder", lambda p: hls_ladder.SOFTWARE)
+    monkeypatch.setattr(manager, "_start_process", lambda s, i: None)
+    monkeypatch.setattr(manager, "_ensure_watcher", lambda: None)
+    monkeypatch.setattr(hs.settings, "MAX_PARALLEL_HLS_STREAMS", 4)
+    phone = manager.create("h/f", "/in.mkv", 0.0, viewer="phone")
+    tv = manager.create("h/f", "/in.mkv", 260.0, viewer="tv")
+    assert phone is not tv and phone.id != tv.id
+    assert manager.create("h/f", "/in.mkv", 0.0, viewer="phone") is phone  # a reload rejoins its own
+    assert manager.create("h/f", "/in.mkv", 0.0) is not phone  # no viewer named: its own, as before
+    manager.close_key("h/f")
+    assert manager.keys() == []
+
+
 def test_a_request_on_a_closed_session_gets_nothing_instead_of_an_error(tmp_path, monkeypatch):
     monkeypatch.setattr(hs, "SEGMENT_WAIT_SECONDS", 0.3)
     manager = hs.SessionManager(str(tmp_path))
