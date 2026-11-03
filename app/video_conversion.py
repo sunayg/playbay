@@ -6,6 +6,7 @@ Conversion itself lives in hls_sessions (encode on demand); nothing here convert
 import contextlib
 import math
 import os
+import re
 import subprocess
 import tempfile
 import urllib.parse
@@ -14,6 +15,8 @@ from typing import Any, Dict, List, Tuple
 
 import log
 from iso639 import languages as _iso639_languages
+from langdetect import DetectorFactory, detect  # pyright: ignore[reportUnknownVariableType]
+from langdetect.lang_detect_exception import LangDetectException
 from pymediainfo import MediaInfo
 
 
@@ -55,10 +58,17 @@ def resolve_language(raw: str) -> Tuple[str, str]:
     return code, code.upper()
 
 
+DetectorFactory.seed = 0  # the same text always gets the same answer
+UNTAGGED = "und"
+_CUE_TEXT_LIMIT = 4000  # characters of dialogue read per track: plenty to tell languages apart
+_MIN_TEXT = 60
+
+
 def get_sub_tracks(filepath: str) -> List[Tuple[int, str]]:
+    """(stream index, language as tagged in the file) of each text subtitle track; "und" when it has no tag."""
     media_info: Any = MediaInfo.parse(filepath)
     return [
-        (int(t.streamorder), t.language or "en")
+        (int(t.streamorder), t.language or UNTAGGED)
         for t in [
             t for t in media_info.tracks if t.track_type == "Text" and "Picture" not in (t.codec_id_info or "")
         ]
@@ -77,6 +87,43 @@ def extract_subtitles_as_vtt(filepath: str, output_dir: str) -> Any:
             os.path.join(output_dir, f"{filename_without_extension}.{i}_{lang}.vtt"),
         ]
     return Popen(args)
+
+
+def detect_vtt_language(path: str) -> str | None:
+    """The language of a VTT file's dialogue as a 2-letter code, None when it cannot be told."""
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+    dialogue = [
+        re.sub(r"<[^>]+>|\{[^}]*\}", "", line).strip()
+        for line in lines
+        if line.strip() and "-->" not in line and not line.startswith("WEBVTT") and not line.strip().isdigit()
+    ]
+    text = " ".join(dialogue)[:_CUE_TEXT_LIMIT]
+    if len(text) < _MIN_TEXT:
+        return None
+    try:
+        return str(detect(text)).split("-")[0]
+    except LangDetectException:
+        return None
+
+
+def name_untagged_subtitles(output_dir: str, filename_without_extension: str) -> None:
+    """Extracted tracks the file did not tag with a language are named `.{i}_und.vtt`; read each one's dialogue
+    and rename it for the language it turns out to be, so it is not listed as English (or Unknown)."""
+    pattern = re.compile(rf"^{re.escape(filename_without_extension)}\.(\d+)_{UNTAGGED}\.vtt$")
+    with contextlib.suppress(OSError):
+        for name in sorted(os.listdir(output_dir)):
+            match = pattern.match(name)
+            if not match:
+                continue
+            path = os.path.join(output_dir, name)
+            code = detect_vtt_language(path)
+            if code:
+                with contextlib.suppress(OSError):
+                    os.replace(path, os.path.join(output_dir, f"{filename_without_extension}.{match.group(1)}_{code}.vtt"))
 
 
 def audio_codecs(filepath: str) -> List[str] | None:

@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [[package]]
@@ -404,6 +404,15 @@ name = "iso-639"
 version = "0.4.5"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5a/8d/27969852f4e664525c3d070e44b2b719bc195f4d18c311c52e57bb93614e/iso-639-0.4.5.tar.gz", hash = "sha256:dc9cd4b880b898d774c47fe9775167404af8a85dd889d58f9008035109acce49", size = 167421, upload-time = "2016-04-29T14:57:29.657Z" }
+
+[[package]]
+name = "langdetect"
+version = "1.0.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0e/72/a3add0e4eec4eb9e2569554f7c70f4a3c27712f40e3284d483e88094cc0e/langdetect-1.0.9.tar.gz", hash = "sha256:cbc1fef89f8d062739774bd51eda3da3274006b3661d199c2655f6b3f6d605a0", size = 981474, upload-time = "2021-05-07T07:54:13.562Z" }
 
 [[package]]
 name = "libtorrent"
@@ -904,6 +913,7 @@ dependencies = [
     { name = "diskcache" },
     { name = "fastapi" },
     { name = "iso-639" },
+    { name = "langdetect" },
     { name = "libtorrent" },
     { name = "lxml" },
     { name = "parse-torrent-title" },
@@ -944,6 +954,7 @@ requires-dist = [
     { name = "fastapi", specifier = "==0.115.6" },
     { name = "httpx", marker = "extra == 'dev'", specifier = "==0.28.1" },
     { name = "iso-639", specifier = "==0.4.5" },
+    { name = "langdetect", specifier = "==1.0.9" },
     { name = "libtorrent", specifier = "==2.0.11" },
     { name = "lxml", specifier = "==5.4.0" },
     { name = "parse-torrent-title", specifier = "==2.8.2" },

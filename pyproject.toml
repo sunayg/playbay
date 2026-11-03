@@ -24,6 +24,7 @@ dependencies = [
     "urllib3==1.26.16",
     "libtorrent==2.0.11",
     "types-libtorrent==2.0.11.20250816",
+    "langdetect==1.0.9",
 ]
 
 [project.optional-dependencies]

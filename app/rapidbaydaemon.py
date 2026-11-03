@@ -598,6 +598,9 @@ class RapidBayDaemon:
                     extraction.wait(timeout=_SUBTITLE_EXTRACTION_SECONDS)
                 except subprocess.TimeoutExpired:
                     extraction.kill()  # not left running on, writing subtitles after the file is playable
+                video_conversion.name_untagged_subtitles(
+                    output_dir, os.path.splitext(os.path.basename(filepath))[0]
+                )
             except Exception as e:
                 log.debug(f"Subtitle extraction failed for {filepath}: {e}")
             _link_or_copy(filepath, output_filepath)
@@ -748,7 +751,9 @@ class RapidBayDaemon:
                     continue
                 subtitle_filenames = _subtitle_filenames(h, filepath)
                 available_subtitle_languages = [lang for lang in [get_subtitle_language(fn) for fn in subtitle_filenames] if lang]
-                embedded_subtitle_languages = [lang for (_, lang) in video_conversion.get_sub_tracks(filepath)]
+                embedded_subtitle_languages = [
+                    lang for (_, lang) in video_conversion.get_sub_tracks(filepath) if lang != video_conversion.UNTAGGED
+                ]
                 self._download_external_subtitles(filepath, output_dir, skip=available_subtitle_languages + embedded_subtitle_languages)
             elif is_state(filename, FileStatus.READY_TO_COPY):
                 if not os.path.isfile(filepath):
