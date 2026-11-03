@@ -231,6 +231,7 @@ class RapidBayDaemon:
         shutil.rmtree(sessions_dir, ignore_errors=True)  # whatever a previous run left behind
         self.sessions = hls_sessions.SessionManager(sessions_dir)
         self._subtitle_gate: Lock = Lock()
+        self._early_subtitles: Set[Tuple[str, str]] = set()  # (hash, filename) looked up by name while downloading
         # Last deadline-rush of a file's head window, keyed by (magnet_hash, filename);
         # throttles _rush_hls_head.
         self._head_rushes: Dict[Tuple[str, str], float] = {}
@@ -557,6 +558,8 @@ class RapidBayDaemon:
             return False, None
         available = self._get_available_bytes(magnet_hash, filename)
         filepath = os.path.join(settings.DOWNLOAD_DIR, magnet_hash, f.path)
+        if _is_safe_subpath(settings.DOWNLOAD_DIR, filepath):
+            self._start_early_subtitles(magnet_hash, filename, filepath)
         needed = self._start_threshold(magnet_hash, filename, filepath, f.size, available)
         fraction = round(needed / f.size, 4)
         if available < needed:
@@ -715,6 +718,23 @@ class RapidBayDaemon:
             self.subtitle_downloads[filepath] = SubtitleDownloadStatus.DOWNLOADING
         self._run_subtitle_download(filepath, output_dir, skip or [])
 
+    def _start_early_subtitles(self, magnet_hash: str, filename: str, filepath: str) -> None:
+        """Someone is opening a file that is still downloading: look its subtitles up by name now, so they are
+        there when playback starts instead of only after the download."""
+        key = (magnet_hash, filename)
+        with self._subtitle_gate:
+            if key in self._early_subtitles or not settings.SUBTITLE_LANGUAGES:
+                return
+            self._early_subtitles.add(key)
+        self._run_early_subtitles(filepath, _get_output_dir(magnet_hash))
+
+    @threaded
+    @log.catch_and_log_exceptions
+    def _run_early_subtitles(self, filepath: str, output_dir: str) -> None:
+        os.makedirs(output_dir, exist_ok=True)
+        subtitles.download_all_subtitles(filepath, early=True)
+        self._emit_vtts_for_hls(filepath, output_dir)
+
     @threaded
     @log.catch_and_log_exceptions
     def _run_subtitle_download(self, filepath: str, output_dir: str, skip: List[str]) -> None:
@@ -750,12 +770,14 @@ class RapidBayDaemon:
                 # language-less SRT are English.
                 vtt_name = f"{basename_without_ext}_{lang or 'en'}.vtt"
                 vtt_path = os.path.join(output_dir, vtt_name)
-                if not os.path.isfile(vtt_path):
+                # Made again when the SRT is newer: the hash-matched, timed subtitles of a finished download
+                # replace the name-matched ones fetched while it was still downloading.
+                if not os.path.isfile(vtt_path) or os.path.getmtime(srt_path) > os.path.getmtime(vtt_path):
                     # Bound runtime so a malformed SRT can't wedge the
                     # subtitle-download thread indefinitely.
                     try:
                         subprocess.run(
-                            ["ffmpeg", "-nostdin", "-v", "quiet", "-i", srt_path, vtt_path],
+                            ["ffmpeg", "-nostdin", "-y", "-v", "quiet", "-i", srt_path, vtt_path],
                             check=False,
                             timeout=60,
                         )

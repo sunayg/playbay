@@ -15,19 +15,40 @@ interface PlacedCue extends VTTCue {
   _rapidbayLine?: VTTCue["line"];
   _rapidbaySnap?: boolean;
   _rapidbayAlign?: VTTCue["lineAlign"];
+  // Times as the subtitle file gave them, and the delay they are shifted by now.
+  _rapidbayStart?: number;
+  _rapidbayEnd?: number;
+  _rapidbayShift?: number;
 }
 type AudioTrackListLike = EventTarget & { length: number; [index: number]: { language?: string; label?: string; enabled: boolean } };
 
 const CAPTION_KEY = "captionLanguage";
 const RAISED_LINE = 78; // percent from the top: clears the controls (default)
+export const MAX_SUBTITLE_DELAY = 60; // seconds, either way
+const DELAY_STEP = 0.05;
+const SWEEP_MS = 1000;
 
-export function useTextTracks(video: Ref<HTMLVideoElement | null>, isRaised: () => boolean, raisedLine: () => number = () => RAISED_LINE) {
+export function clampDelay(seconds: number): number {
+  const rounded = Math.round(seconds / DELAY_STEP) * DELAY_STEP;
+  return Math.max(-MAX_SUBTITLE_DELAY, Math.min(MAX_SUBTITLE_DELAY, Math.round(rounded * 100) / 100));
+}
+
+export function useTextTracks(
+  video: Ref<HTMLVideoElement | null>,
+  isRaised: () => boolean,
+  raisedLine: () => number = () => RAISED_LINE,
+  // Where this file's subtitle delay is remembered; none means it is not.
+  delayKey: () => string | null = () => null,
+) {
   const captionChoices = ref<TrackChoice[]>([]);
   const activeCaption = ref<number | null>(null);
   const trackCount = ref(0);
   const currentCaption = ref<string | null>(null); // language of the showing track
   const audioChoices = ref<TrackChoice[]>([]);
   const activeAudio = ref<number | null>(null);
+  // Seconds the subtitles are shifted later (negative: earlier).
+  const delay = ref(0);
+  let sweepTimer: ReturnType<typeof setInterval> | undefined;
 
   let attached: HTMLVideoElement | null = null;
   const bound = new WeakSet<TextTrack>();
@@ -93,6 +114,59 @@ export function useTextTracks(video: Ref<HTMLVideoElement | null>, isRaised: () 
         }
       }
     }
+  }
+
+  // Shift every cue by the delay. Cues of a stream arrive a few at a time as it plays, so this runs again
+  // every second while a delay is set, and the new ones are caught before they come up.
+  function applyDelay(): void {
+    const tracks = textTracks();
+    if (!tracks) return;
+    for (let i = 0; i < tracks.length; i++) {
+      const cues = tracks[i].cues;
+      if (!cues) continue;
+      for (let j = 0; j < cues.length; j++) {
+        const cue = cues[j] as PlacedCue;
+        if (cue._rapidbayStart === undefined) {
+          cue._rapidbayStart = cue.startTime;
+          cue._rapidbayEnd = cue.endTime;
+          cue._rapidbayShift = 0;
+        }
+        if (cue._rapidbayShift === delay.value) continue;
+        const start = Math.max(0, cue._rapidbayStart + delay.value);
+        const end = Math.max(start, (cue._rapidbayEnd as number) + delay.value);
+        // Later first for the end, so the cue never ends before it starts.
+        if (end >= cue.endTime) {
+          cue.endTime = end;
+          cue.startTime = start;
+        } else {
+          cue.startTime = start;
+          cue.endTime = end;
+        }
+        cue._rapidbayShift = delay.value;
+      }
+    }
+  }
+
+  function setDelay(seconds: number): void {
+    delay.value = clampDelay(seconds);
+    const key = delayKey();
+    if (key) {
+      if (delay.value) storageSet(key, String(delay.value));
+      else storageRemove(key);
+    }
+    applyDelay();
+    clearInterval(sweepTimer);
+    sweepTimer = delay.value !== 0 && attached ? setInterval(applyDelay, SWEEP_MS) : undefined;
+  }
+
+  function nudgeDelay(step: number): void {
+    setDelay(delay.value + step);
+  }
+
+  function loadDelay(): void {
+    const key = delayKey();
+    const saved = key ? Number(storageGet(key)) : 0;
+    setDelay(Number.isFinite(saved) ? saved : 0);
   }
 
   function selectCaption(index: number | null): void {
@@ -209,9 +283,12 @@ export function useTextTracks(video: Ref<HTMLVideoElement | null>, isRaised: () 
     }
     audioTracks()?.addEventListener?.("addtrack", onAddAudio);
     refresh();
+    loadDelay();
   }
 
   function detach(): void {
+    clearInterval(sweepTimer);
+    sweepTimer = undefined;
     const tracks = textTracks();
     if (tracks) {
       tracks.removeEventListener?.("addtrack", onAddTrack);
@@ -230,6 +307,9 @@ export function useTextTracks(video: Ref<HTMLVideoElement | null>, isRaised: () 
     currentCaption,
     audioChoices,
     activeAudio,
+    delay,
+    setDelay,
+    nudgeDelay,
     refresh,
     placeCues,
     selectCaption,

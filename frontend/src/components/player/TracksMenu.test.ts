@@ -35,3 +35,24 @@ describe("TracksMenu quality", () => {
     expect(wrapper.emitted("quality")).toEqual([[1], [-1]]);
   });
 });
+
+describe("TracksMenu subtitle timing", () => {
+  const shown = { ...base, captionChoices: [{ index: 0, label: "English" }], activeCaption: 0 };
+
+  it("is offered only while a subtitle is showing", () => {
+    expect(mount(TracksMenu, { props: { ...shown, subtitleDelay: 0 } }).text()).toContain("Subtitle timing");
+    expect(mount(TracksMenu, { props: { ...shown, activeCaption: null, subtitleDelay: 0 } }).text()).not.toContain("Subtitle timing");
+    expect(mount(TracksMenu, { props: { ...base, subtitleDelay: 0 } }).text()).not.toContain("Subtitle timing");
+  });
+
+  it("shows the delay and emits steps, and a reset", async () => {
+    const wrapper = mount(TracksMenu, { props: { ...shown, subtitleDelay: 1.5 } });
+    expect(wrapper.find(".player-delay-value").text()).toBe("+1.5 s");
+    await wrapper.find("[aria-label='Show subtitles later']").trigger("click");
+    await wrapper.find("[aria-label='Show subtitles earlier']").trigger("click");
+    await wrapper.find(".player-delay-value").trigger("click");
+    expect(wrapper.emitted("delay")).toEqual([[0.5], [-0.5], [null]]);
+    expect(mount(TracksMenu, { props: { ...shown, subtitleDelay: 0 } }).find(".player-delay-value").text()).toBe("On time");
+    expect(mount(TracksMenu, { props: { ...shown, subtitleDelay: -0.25 } }).find(".player-delay-value").text()).toBe("−0.25 s");
+  });
+});

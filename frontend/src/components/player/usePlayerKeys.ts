@@ -11,6 +11,7 @@ import { arrowDirection, mediaKeyAction, registerMediaKeyHandler, type MediaActi
 export const SEEK_FORWARD = 60;
 export const SEEK_BACK = 15;
 export const SEEK_FAST_FORWARD = 30;
+export const SUBTITLE_STEP = 0.25;
 
 export interface PlayerActions {
   playPause(wanted?: "play" | "pause"): void;
@@ -18,6 +19,8 @@ export interface PlayerActions {
   toggleMute(): void;
   toggleFullscreen(): void;
   cycleCaption(): void;
+  // Show the subtitles earlier (negative) or later, by this many seconds.
+  nudgeSubtitles(seconds: number): void;
   playNext(): void;
   hasNext(): boolean;
   menuOpen(): boolean;
@@ -84,6 +87,8 @@ export function usePlayerKeys(actions: PlayerActions): void {
     else if (key === "m") handled(() => actions.toggleMute());
     else if (key === "f") handled(() => actions.toggleFullscreen());
     else if (key === "c") handled(() => actions.cycleCaption());
+    else if (key === "[") handled(() => actions.nudgeSubtitles(-SUBTITLE_STEP));
+    else if (key === "]") handled(() => actions.nudgeSubtitles(SUBTITLE_STEP));
   }
 
   const unregister = registerMediaKeyHandler((action) => onMedia(action));

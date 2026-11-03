@@ -19,7 +19,12 @@ def _chunks(items: List[Any], n: int) -> Generator[List[Any], None, None]:
 
 
 @log.catch_and_log_exceptions
-def download_all_subtitles(filepath: str, skip: List[str] | None = None) -> None:
+def download_all_subtitles(filepath: str, skip: List[str] | None = None, early: bool = False) -> None:
+    """Fetch subtitles for a file from OpenSubtitles into its folder, as `{stem}.{lang}.srt`.
+
+    `early`: the file is still downloading, so it cannot be hashed (the hash reads its last bytes) or used
+    to time the subtitles (alass reads all of it). They are found by the file's name alone, which matches
+    the release but not as surely, and are replaced by hash-matched, timed ones when the download finishes."""
     if skip is None:
         skip = []
     dirname: str = os.path.dirname(filepath)
@@ -27,13 +32,14 @@ def download_all_subtitles(filepath: str, skip: List[str] | None = None) -> None
     basename_without_ext: str = os.path.splitext(basename)[0]
     ost: OpenSubtitles = OpenSubtitles()
     ost.login(settings.OPENSUBTITLES_USERNAME, settings.OPENSUBTITLES_PASSWORD)
-    f: File = File(filepath)
-    h = f.get_hash()
+    h = None if early else File(filepath).get_hash()
     language_ids: List[Any] = [
       languages.get(part1=lang).part2b for lang in settings.SUBTITLE_LANGUAGES if lang not in skip
     ]
     results_from_hash: List[Any] = (
-            [
+            []
+            if h is None
+            else [
             item for sublist in
             [ost.search_subtitles([{"sublanguageid": langid, "moviehash": h}]) or [] for langid in language_ids]
             for item in sublist
@@ -94,7 +100,7 @@ def download_all_subtitles(filepath: str, skip: List[str] | None = None) -> None
         _download_subtitle_chunk()
         wait_before_next_chunk = True
 
-    for sub_filename in sub_filenames:
+    for sub_filename in [] if early else sub_filenames:
         tmp_path = os.path.join(dirname, "fixed_" + sub_filename)
         output_path = os.path.join(dirname, sub_filename)
         # Argument-list form: these paths come from torrent file names and

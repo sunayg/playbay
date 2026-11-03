@@ -87,7 +87,7 @@ function raisedCueLine(): number {
   if (!box || !controls) return 78;
   return Math.max(40, Math.min(90, Math.round((1 - (controls + 12) / box) * 100)));
 }
-const tracks = useTextTracks(video, () => controlsOn.value, raisedCueLine);
+const tracks = useTextTracks(video, () => controlsOn.value, raisedCueLine, () => "subtitleDelay:" + props.magnet + "|" + props.filename);
 const episodes = useEpisodes({ hash: () => hash.value, magnet: () => props.magnet, filename: () => props.filename });
 watch(controlsOn, (shown) => tracks.placeCues(shown));
 
@@ -449,6 +449,7 @@ usePlayerKeys({
   toggleMute,
   toggleFullscreen,
   cycleCaption: () => tracks.cycleCaption(),
+  nudgeSubtitles,
   playNext,
   hasNext: () => !!nextFilename.value,
   menuOpen: () => !!openMenu.value,
@@ -461,6 +462,31 @@ usePlayerKeys({
   },
   reveal,
 });
+
+// A line of text over the picture for a moment, to say what a key press did.
+const note = ref("");
+let noteTimer: ReturnType<typeof setTimeout> | undefined;
+function showNote(text: string): void {
+  note.value = text;
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => (note.value = ""), 1500);
+}
+
+function describeDelay(seconds: number): string {
+  if (seconds === 0) return "Subtitles on time";
+  return `Subtitles ${Math.abs(seconds).toFixed(2).replace(/0$/, "")} s ${seconds > 0 ? "later" : "earlier"}`;
+}
+
+function nudgeSubtitles(step: number): void {
+  if (tracks.activeCaption.value === null) return;
+  tracks.nudgeDelay(step);
+  showNote(describeDelay(tracks.delay.value));
+}
+
+function changeSubtitleDelay(step: number | null): void {
+  if (step === null) tracks.setDelay(0);
+  else tracks.nudgeDelay(step);
+}
 
 const REVEAL_EVENTS = ["mousemove", "touchstart", "click"] as const;
 
@@ -494,6 +520,7 @@ onBeforeUnmount(() => {
   disposed = true;
   clearTimeout(hideTimer);
   clearTimeout(bufferingTimer);
+  clearTimeout(noteTimer);
   clearInterval(positionTimer);
   for (const name of REVEAL_EVENTS) document.removeEventListener(name, reveal);
   episodes.dispose();
@@ -556,6 +583,7 @@ onBeforeUnmount(() => {
         :src="subtitle.url"
       />
     </video>
+    <div v-if="note" class="player-note" role="status">{{ note }}</div>
     <div v-if="buffering && supported && url" class="player-buffering" role="status" aria-live="polite">
       <span class="player-buffering-ring" aria-hidden="true"></span>
       <span class="sr-only">Buffering</span>
@@ -663,7 +691,9 @@ onBeforeUnmount(() => {
             :playing-quality="playingQuality"
             @quality="selectQuality"
             @audio="selectAudio"
+            :subtitle-delay="tracks.delay.value"
             @caption="tracks.selectCaption"
+            @delay="changeSubtitleDelay"
           />
         </div>
         <button type="button" class="player-btn" aria-label="Full screen" title="Full screen" @click="toggleFullscreen">
@@ -689,6 +719,10 @@ onBeforeUnmount(() => {
 .player.controls-hidden { cursor: none; }
 .player-video { width: 100%; height: 100%; object-fit: contain; background: #000; outline: none; }
 .player-video::cue { background: rgba(0, 0, 0, 0.6); font: 600 1.15em/1.3 system-ui, sans-serif; }
+.player-note { position: absolute; top: 12%; left: 50%; transform: translateX(-50%); padding: var(--space-2) var(--space-4); border-radius: 6px; background: rgba(0, 0, 0, 0.7); color: #fff; pointer-events: none; }
+.player-delay { display: flex; gap: var(--space-2); padding: 0 var(--space-3) var(--space-2); }
+.player-delay button { flex: 0 0 auto; min-width: 2.2rem; }
+.player-delay .player-delay-value { flex: 1; }
 .player-buffering { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .player-buffering-ring {
   width: 56px;

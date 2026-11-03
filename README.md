@@ -186,6 +186,10 @@ You'll need a VIP account at OpenSubtitles.org for it to work:
 -e OPENSUBTITLES_USERNAME=someusername -e OPENSUBTITLES_PASSWORD=yourpassword
 ```
 
+Subtitles are looked up on OpenSubtitles by the file's hash and name when its download has finished, and timed against the video. While a file is still downloading it cannot be hashed, so its subtitles are looked up by name alone as soon as you open it. Those match the release but are not timed against the video, and are replaced by the hash-matched ones once the download is done. Embedded subtitle tracks that carry no language tag are named by the language their dialogue is in.
+
+If subtitles come early or late, shift them: open the player's menu (Subtitle timing, in steps of half a second) or press `[` for earlier and `]` for later (a quarter of a second each). The shift is remembered for that file.
+
 ### Configuring which subtitles to download
 
 The default setting downloads English subtitles. Add the env variable `SUBTITLE_LANGUAGES` to get more languages:

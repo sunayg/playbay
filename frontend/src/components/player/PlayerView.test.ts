@@ -509,6 +509,78 @@ describe("captions", () => {
     expect(cue).toMatchObject({ line: "auto", snapToLines: true, lineAlign: "start" });
   });
 
+  describe("subtitle delay", () => {
+    const makeCue = (start: number, end: number) => ({ line: "auto", snapToLines: true, lineAlign: "start", startTime: start, endTime: end });
+
+    async function showing() {
+      vi.useFakeTimers();
+      const { state } = await mountPlayer();
+      const track = new FakeTrack("en");
+      const cues = [makeCue(10, 12), makeCue(20, 22)];
+      track.cues = cues;
+      state.textTracks.add(track);
+      await flushPromises();
+      track.mode = "showing";
+      state.textTracks.dispatchEvent(new Event("change"));
+      await flushPromises();
+      return { state, track, cues };
+    }
+
+    it("shifts the cues with ] and [ and says so on the picture", async () => {
+      const { cues } = await showing();
+      press("]");
+      press("]");
+      await flushPromises();
+      expect(cues.map((c) => [c.startTime, c.endTime])).toEqual([[10.5, 12.5], [20.5, 22.5]]);
+      expect(wrapper!.find(".player-note").text()).toBe("Subtitles 0.5 s later");
+      press("[");
+      press("[");
+      press("[");
+      await flushPromises();
+      expect(cues[0].startTime).toBe(9.75);
+      expect(wrapper!.find(".player-note").text()).toBe("Subtitles 0.25 s earlier");
+    });
+
+    it("catches cues that arrive later and remembers the delay for the file", async () => {
+      const { track, cues } = await showing();
+      press("]");
+      const late = makeCue(30, 32);
+      (track.cues as unknown[]).push(late);
+      await vi.advanceTimersByTimeAsync(1100);
+      expect(late.startTime).toBe(30.25);
+      expect(cues[0].startTime).toBe(10.25);
+      expect(storageGet(`subtitleDelay:${MAGNET}|${FILE}`)).toBe("0.25");
+    });
+
+    it("starts a file with the delay it was left with, and never moves a cue before time zero", async () => {
+      storageSet(`subtitleDelay:${MAGNET}|${FILE}`, "-3");
+      vi.useFakeTimers();
+      const { state } = await mountPlayer();
+      const track = new FakeTrack("en");
+      const early = makeCue(1, 2);
+      track.cues = [early, makeCue(10, 12)];
+      state.textTracks.add(track);
+      await flushPromises();
+      await vi.advanceTimersByTimeAsync(1100);
+      expect([early.startTime, early.endTime]).toEqual([0, 0]);
+      expect((track.cues[1] as ReturnType<typeof makeCue>).startTime).toBe(7);
+    });
+
+    it("does nothing while the subtitles are off", async () => {
+      vi.useFakeTimers();
+      const { state } = await mountPlayer();
+      const track = new FakeTrack("en");
+      const cue = makeCue(10, 12);
+      track.cues = [cue];
+      state.textTracks.add(track);
+      await flushPromises();
+      press("]");
+      await flushPromises();
+      expect(cue.startTime).toBe(10);
+      expect(wrapper!.find(".player-note").exists()).toBe(false);
+    });
+  });
+
   it("renders the <track> elements it is given", async () => {
     await mountPlayer({ subtitles: [{ language: "eng", url: `/play/${HASH}/a_eng.vtt` }, { language: "nld", url: `/play/${HASH}/a_nld.vtt` }] });
     const tracks = wrapper!.findAll("track");
