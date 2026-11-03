@@ -530,12 +530,11 @@ class SessionManager:
             proc = session.proc
             alive = proc is not None and proc.poll() is None
             last = self._through(session, produced_indexes(session.directory))
-            if alive:
-                # Coming up (or next) in this run: wait for it. Already past, or too far ahead: restart there.
-                if last < index <= last + 1 + RESTART_GAP:
-                    if session.paused:
-                        self._resume(session)
-                    return
+            # Coming up (or next) in this run: wait for it. Already past, or too far ahead: restart there.
+            if alive and last < index <= last + 1 + RESTART_GAP:
+                if session.paused:
+                    self._resume(session)
+                return
             if alive:
                 log.event(f"HLS session {session.id[:8]}: asked for segment {index} while the encoder is at {last}, moving it")
             self._start_process(session, index)
