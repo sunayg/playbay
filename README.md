@@ -143,6 +143,19 @@ RapidBay streams like Plex or Jellyfin: the download is kept as it is, and video
 - **Seeing what happened:** Settings > Streaming > "Video encoding on this machine" (or `/api/hls_diagnostics`) shows the encoder and decoder chosen, each hardware test that was tried and why it failed, and the measured speed. Include it in a bug report. Encoder starts, restarts and failures also go to the container's log (`docker logs`). An encoder that is running but produces nothing for 45 seconds is restarted.
 - **Kodi and casting:** both get the original file, not an encode, so they need a device that plays its format. Chromecast works for H.264 MP4 files.
 
+### What works on which hardware
+
+| Setup | Encoding |
+| --- | --- |
+| Linux, Intel or AMD GPU, `/dev/dri` mapped into the container | Hardware (VAAPI), tested on Intel |
+| Linux, no GPU or none mapped | Software (x264), limited to what the CPU can keep up with |
+| Windows or macOS with Docker Desktop | Software, same limit. There is no `/dev/dri` in these containers |
+| NVIDIA (any system) | Software for now: NVENC is not supported yet |
+| Intel QSV | Not used |
+| Windows without Docker | Not supported |
+
+Hardware encoding for NVIDIA and for Windows is wanted but has not been written, because nobody has been able to test it. If you have such a machine and want to help, open a "Hardware report" issue with your diagnostics report (Settings > Streaming > "Video encoding on this machine").
+
 ### Hardware encoding on Linux (Intel and AMD, VAAPI)
 
 Map the GPU into the container and give it access to the render group. In `docker-compose.yml`:

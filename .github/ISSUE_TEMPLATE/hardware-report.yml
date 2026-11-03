@@ -1,0 +1,41 @@
+name: Hardware report
+description: Playback is slow, stalls, or uses the CPU when it should not, or you want to help test a hardware encoder.
+labels: ["hardware"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        RapidBay encodes video with ffmpeg and picks an encoder by testing what your machine can do. The diagnostics report says what it found and why, which makes most hardware problems quick to sort out.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics report
+      description: Open Settings > Streaming > "Video encoding on this machine", or open `/api/hls_diagnostics` in your browser, and paste the whole result.
+      render: json
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Machine
+      description: CPU and GPU models, and the operating system (for example "i5-7500T, Intel HD 630, Debian 13", or "Ryzen 5 5600, RTX 3060, Windows 11 with Docker Desktop").
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: How you run it
+      description: Docker, Docker Desktop with WSL 2, Unraid, a NAS, and so on, and whether you mapped a GPU into the container.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: What you expected and what you saw (stutter, stall, wrong colours, high CPU, an error). If a file is involved, say its codec and resolution.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Container log
+      description: The last lines of `docker logs <container>` around the time it happened. Encoder starts, restarts and failures appear there.
+      render: text
