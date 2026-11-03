@@ -1519,6 +1519,37 @@ class CastLinkResponse(BaseModel):
     origin: str = ""  # where the TV should fetch from; empty means where the page came from
 
 
+# What TV browsers reported from the check page (/tvcheck.html), newest last. Kept in memory, a few at most:
+# the page is opened by hand on a TV that has no password cookie, so it cannot sign in.
+_tv_reports: List[Dict[str, Any]] = []
+_TV_REPORT_LIMIT = 5
+_TV_REPORT_BYTES = 16 * 1024
+
+
+@app.post("/api/tv_report")
+async def tv_report(request: Request) -> Dict[str, bool]:
+    body = await request.body()
+    if len(body) > _TV_REPORT_BYTES:
+        raise HTTPException(status_code=413)
+    try:
+        data = json.loads(body)
+    except ValueError:
+        raise HTTPException(status_code=400) from None
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400)
+    report = cast(Dict[str, Any], data)
+    report["received_from"] = request.client.host if request.client else ""
+    report["received_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    _tv_reports.append(report)
+    del _tv_reports[:-_TV_REPORT_LIMIT]
+    return {"ok": True}
+
+
+@app.get("/api/tv_report")
+def tv_reports(_: None = Depends(authorize)) -> List[Dict[str, Any]]:
+    return list(_tv_reports)
+
+
 @app.get("/api/activity")
 def activity(_: None = Depends(authorize)) -> Dict[str, Any]:
     """Open streams, downloads and kept files, and free disk space."""

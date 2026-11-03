@@ -153,3 +153,23 @@ def test_the_activity_routes_reach_the_daemon(client):
     app_module.daemon.remove_file.return_value = False  # not a kept file: it is a download in progress
     client.post(f"/api/activity/downloads/{HASH}/show.mkv/remove", headers=headers)
     app_module.daemon.cancel_download.assert_called_once_with(HASH, "show.mkv")
+
+
+def test_a_tv_report_is_kept_and_read_back_with_the_password(client):
+    plain = TestClient(app_module.app)
+    app_module._tv_reports.clear()
+    assert plain.post("/api/tv_report", json={"userAgent": "VIDAA", "keys": [{"keyCode": 13}]}).json() == {"ok": True}
+    assert plain.get("/api/tv_report").status_code == 404  # reading needs the password
+    [report] = client.get("/api/tv_report", headers={"Authorization": "Bearer secret"}).json()
+    assert report["userAgent"] == "VIDAA" and report["received_at"]
+
+
+def test_tv_reports_are_bounded_and_must_be_small_json_objects(client):
+    app_module._tv_reports.clear()
+    plain = TestClient(app_module.app)
+    for i in range(app_module._TV_REPORT_LIMIT + 3):
+        plain.post("/api/tv_report", json={"n": i})
+    assert [r["n"] for r in app_module._tv_reports] == list(range(3, app_module._TV_REPORT_LIMIT + 3))
+    assert plain.post("/api/tv_report", content=b"x" * (app_module._TV_REPORT_BYTES + 1)).status_code == 413
+    assert plain.post("/api/tv_report", content=b"not json").status_code == 400
+    assert plain.post("/api/tv_report", json=[1, 2]).status_code == 400

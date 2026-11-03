@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PlayBay TV check</title>
+<style>
+  html, body { margin: 0; background: #111; color: #eee; font-family: Arial, Helvetica, sans-serif; }
+  body { padding: 24px 40px; }
+  h1 { font-size: 34px; margin: 0 0 6px; }
+  p { font-size: 20px; color: #aaa; margin: 4px 0 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 22px; }
+  td { padding: 4px 12px 4px 0; vertical-align: top; }
+  td.k { color: #9ab; width: 36%; }
+  .ok { color: #6d6; }
+  .no { color: #f77; }
+  #keys { font-size: 24px; color: #fd6; min-height: 34px; margin-top: 10px; }
+  #sent { font-size: 18px; color: #888; margin-top: 10px; }
+</style>
+</head>
+<body>
+<h1>PlayBay TV check</h1>
+<p>Press buttons on the remote (arrows, OK, Back, Play, colours): each shows below. The results are sent to the server on their own, and stay on this screen.</p>
+<table id="rows"></table>
+<div id="keys">Press a button...</div>
+<div id="sent"></div>
+<script>
+/* Plain ES5 on purpose: this page has to run on any TV browser, however old. */
+var report = { userAgent: navigator.userAgent, screen: screen.width + "x" + screen.height, window: window.innerWidth + "x" + window.innerHeight, ratio: window.devicePixelRatio || 1, keys: [] };
+var rows = document.getElementById("rows");
+
+function add(name, value, good) {
+  report[name] = value;
+  var tr = document.createElement("tr");
+  var a = document.createElement("td"); a.className = "k"; a.appendChild(document.createTextNode(name));
+  var b = document.createElement("td"); if (good === true) b.className = "ok"; if (good === false) b.className = "no";
+  b.appendChild(document.createTextNode(String(value)));
+  tr.appendChild(a); tr.appendChild(b); rows.appendChild(tr);
+}
+
+function tries(code) { try { new Function(code); return true; } catch (e) { return false; } }
+function has(fn) { try { return !!fn(); } catch (e) { return false; } }
+function yesno(name, ok) { add(name, ok ? "yes" : "NO", ok); }
+
+var chrome = /(?:Chrome|Chromium)\/(\d+)/.exec(navigator.userAgent);
+add("Browser engine", chrome ? "Chromium " + chrome[1] : "not Chromium (see user agent)", chrome ? true : undefined);
+add("User agent", navigator.userAgent);
+add("Screen / window", report.screen + " / " + report.window + " @" + report.ratio + "x");
+
+/* Syntax the app is built from. */
+yesno("JS: arrow functions, let, template strings", tries("var f = (a) => `${a}`; let b = 1;"));
+yesno("JS: optional chaining a?.b", tries("var a = {}; return a?.b;"));
+yesno("JS: nullish a ?? b", tries("return null ?? 1;"));
+yesno("JS: class fields", tries("class A { x = 1; }"));
+yesno("JS: async / await", tries("async function f() { await 1; }"));
+yesno("JS: ES modules (script type=module)", "noModule" in document.createElement("script"));
+yesno("JS: dynamic import()", tries("return import('x');") || tries("import('x')"));
+
+/* APIs. */
+yesno("Promise.allSettled", has(function () { return Promise.allSettled; }));
+yesno("Object.fromEntries", has(function () { return Object.fromEntries; }));
+yesno("Array.prototype.at / flat", has(function () { return [].at && [].flat; }));
+yesno("String.prototype.replaceAll", has(function () { return "".replaceAll; }));
+yesno("fetch + AbortController", has(function () { return window.fetch && window.AbortController; }));
+yesno("EventSource (live progress)", has(function () { return window.EventSource; }));
+yesno("ResizeObserver", has(function () { return window.ResizeObserver; }));
+yesno("IntersectionObserver", has(function () { return window.IntersectionObserver; }));
+yesno("localStorage", has(function () { localStorage.setItem("t", "1"); localStorage.removeItem("t"); return true; }));
+yesno("Service worker", has(function () { return navigator.serviceWorker; }));
+yesno("CSS grid", has(function () { return window.CSS && CSS.supports("display", "grid"); }));
+yesno("CSS custom properties", has(function () { return window.CSS && CSS.supports("--a", "0"); }));
+yesno("CSS inset / aspect-ratio", has(function () { return CSS.supports("inset", "0") && CSS.supports("aspect-ratio", "1/1"); }));
+yesno("CSS :focus-visible", has(function () { document.querySelector(":focus-visible"); return true; }));
+
+/* Video. */
+var v = document.createElement("video");
+yesno("Media Source Extensions (hls.js)", has(function () { return window.MediaSource || window.ManagedMediaSource; }));
+var mse = window.MediaSource;
+add("MSE: H.264 High 4.1 + AAC (our streams)", mse && mse.isTypeSupported ? (mse.isTypeSupported('video/mp4; codecs="avc1.640029,mp4a.40.2"') ? "yes" : "NO") : "no MSE", mse && mse.isTypeSupported && mse.isTypeSupported('video/mp4; codecs="avc1.640029,mp4a.40.2"'));
+add("MSE: H.264 High 4.0 + AAC", mse && mse.isTypeSupported ? (mse.isTypeSupported('video/mp4; codecs="avc1.640028,mp4a.40.2"') ? "yes" : "NO") : "no MSE");
+add("MSE: HEVC", mse && mse.isTypeSupported ? (mse.isTypeSupported('video/mp4; codecs="hvc1.1.6.L120.90"') ? "yes" : "no") : "no MSE");
+var hls = v.canPlayType("application/vnd.apple.mpegurl");
+add("Native HLS (canPlayType)", hls || "no", hls ? true : undefined);
+add("Plays H.264 MP4 directly", v.canPlayType('video/mp4; codecs="avc1.640029,mp4a.40.2"') || "no");
+yesno("Fullscreen API", has(function () { return document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen; }));
+
+function send() {
+  var x = new XMLHttpRequest();
+  x.open("POST", "/api/tv_report", true);
+  x.setRequestHeader("Content-Type", "application/json");
+  x.onreadystatechange = function () {
+    if (x.readyState === 4) document.getElementById("sent").textContent = x.status === 200 ? "Sent to the server (" + report.keys.length + " keys so far)." : "Could not send the results (status " + x.status + "); read them off the screen.";
+  };
+  try { x.send(JSON.stringify(report)); } catch (e) { document.getElementById("sent").textContent = "Could not send: " + e; }
+}
+
+var pending = null;
+document.addEventListener("keydown", function (e) {
+  var item = { key: e.key, code: e.code, keyCode: e.keyCode, which: e.which };
+  report.keys.push(item);
+  document.getElementById("keys").textContent = "key: " + (e.key || "?") + "   keyCode: " + e.keyCode + (e.code ? "   code: " + e.code : "");
+  if (pending) clearTimeout(pending);
+  pending = setTimeout(send, 800);
+  if (e.keyCode >= 37 && e.keyCode <= 40) e.preventDefault();
+}, false);
+
+send();
+</script>
+</body>
+</html>
