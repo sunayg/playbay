@@ -563,3 +563,12 @@ def test_stopping_an_encoder_that_already_ended_keeps_its_last_segment(tmp_path)
         (tmp_path / hs.segment_name(0, i)).write_text("x")
     manager._stop_process(session)
     assert hs.produced_indexes(str(tmp_path), 0) == [0, 1, 2]
+
+
+def test_audio_is_copied_from_the_start_but_encoded_again_after_a_seek(tmp_path):
+    manager = hs.SessionManager(str(tmp_path))
+    session = _session(directory=str(tmp_path))
+    session.audio_copy = True
+    assert manager._audio_args(session, 0) == ["-c:a", "copy", "-bsf:a", "aac_adtstoasc"]
+    after_seek = manager._audio_args(session, 5)
+    assert after_seek is not None and "copy" not in after_seek and "-ac" not in after_seek

@@ -18,6 +18,7 @@ from typing import Annotated, Any, AsyncIterator, Dict, List, cast, override
 
 import cast_access
 import diskcache
+import hls_diagnostics
 import hls_sessions
 import http_cache
 import jackett
@@ -314,6 +315,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     daemon.on_state_change = _state_notifier.notify
     daemon.start()
     library.start()
+    hls_diagnostics.start_measuring()
     try:
         yield
     finally:
@@ -1515,6 +1517,11 @@ def play(magnet_hash: str, filename: str, _: None = Depends(authorize)) -> Respo
 class CastLinkResponse(BaseModel):
     prefix: str
     origin: str = ""  # where the TV should fetch from; empty means where the page came from
+
+
+@app.get("/api/hls_diagnostics")
+def hls_diagnostics_report(_: None = Depends(authorize)) -> Dict[str, Any]:
+    return hls_diagnostics.report()
 
 
 @app.get("/api/cast_link/{magnet_hash}", response_model=CastLinkResponse)

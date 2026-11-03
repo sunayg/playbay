@@ -1,5 +1,5 @@
 import { storageGet } from "./storage";
-import type { SaveResult, SettingsPayload } from "../types";
+import type { HlsDiagnostics, SaveResult, SettingsPayload } from "../types";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(path, { credentials: "same-origin", ...init });
@@ -24,6 +24,12 @@ async function payloadOrThrow(response: Response): Promise<SettingsPayload> {
 
 export async function getSettings(): Promise<SettingsPayload> {
   return payloadOrThrow(await request("/api/settings"));
+}
+
+export async function getHlsDiagnostics(): Promise<HlsDiagnostics> {
+  const response = await request("/api/hls_diagnostics");
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json();
 }
 
 export async function saveCategory(category: string, values: Record<string, unknown>): Promise<SaveResult> {

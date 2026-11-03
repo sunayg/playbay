@@ -38,3 +38,16 @@ export interface SettingsPayload {
 export type SaveResult =
   | { ok: true; payload: SettingsPayload }
   | { ok: false; errors: Record<string, string> };
+
+export interface HlsDiagnostics {
+  ffmpeg: string;
+  hwaccels: string[];
+  cpu_count: number;
+  gpu_device: { path: string; present: boolean };
+  encoder: { setting: string; chosen: string; low_power: boolean };
+  decode: { setting: string; on_gpu: boolean };
+  attempts: { what: string; worked: boolean; detail: string }[];
+  speed: { state: string; pixels_per_second: number | null; full_ladder_speed: number | null; target: number; error: string };
+  configured_heights: number[];
+  warnings: string[];
+}

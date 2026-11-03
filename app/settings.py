@@ -73,6 +73,7 @@ TMDB_API_KEY: str | None = None
 HLS_LADDER_HEIGHTS: List[int] = [1080, 720, 480, 360]  # quality levels to encode, never above the source
 HLS_ENCODER: str = "auto"  # auto, software or vaapi
 HLS_HWDECODE: str = "auto"  # auto (decode on the GPU when it can) or off
+HLS_LIMIT_BY_SPEED: bool = True  # encode fewer quality levels at once when this machine is too slow for all of them
 HLS_X264_PRESET: str = "veryfast"  # software encoder speed/quality trade-off
 HLS_SEGMENT_DURATION: int = 6  # seconds per HLS segment
 HLS_START_SECONDS: int = 20  # seconds of video that must have downloaded, from the start, before playback begins

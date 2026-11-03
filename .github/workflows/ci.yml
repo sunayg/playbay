@@ -18,6 +18,9 @@ jobs:
     - name: Set up Python
       run: uv python install
 
+    - name: Install ffmpeg (the playback test encodes real video)
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
     - name: Install dependencies
       run: uv sync --all-extras
 

@@ -4,6 +4,7 @@ import { clearField, getSettings, resetField, saveCategory } from "../lib/api";
 import type { FieldInfo, SettingsPayload } from "../types";
 import CategoryNav from "./CategoryNav.vue";
 import SettingField from "./SettingField.vue";
+import VideoDiagnostics from "./VideoDiagnostics.vue";
 
 const payload = ref<SettingsPayload | null>(null);
 const selected = ref("");
@@ -95,6 +96,7 @@ async function act(key: string, call: (key: string) => Promise<SettingsPayload>)
         <button type="submit" class="primary" :disabled="saving">Save</button>
         <span v-if="message" class="message" role="status">{{ message }}</span>
       </div>
+      <VideoDiagnostics v-if="selected === 'streaming'" />
     </form>
   </div>
   <p v-else class="loading">Loading…</p>

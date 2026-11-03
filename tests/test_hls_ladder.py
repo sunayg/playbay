@@ -238,6 +238,8 @@ def test_detection_falls_back_to_the_low_power_encoder(monkeypatch):
     runs: list[list[str]] = []
 
     class Done:
+        stderr = b""
+
         def __init__(self, code: int) -> None:
             self.returncode = code
 

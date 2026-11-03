@@ -23,6 +23,7 @@ from subprocess import DEVNULL, PIPE, Popen
 from typing import Callable, Dict, List
 
 import fmp4
+import hls_diagnostics
 import hls_ladder
 import log
 import settings
@@ -250,7 +251,10 @@ class SessionManager:
         size = hls_ladder.probe_video_size(source)
         if duration is None or size is None:
             raise SessionError("unreadable")
-        ladder = hls_ladder.plan_ladder(size[0], size[1], settings.HLS_LADDER_HEIGHTS)
+        if settings.HLS_LIMIT_BY_SPEED:
+            ladder = hls_diagnostics.fit_ladder(size[0], size[1], settings.HLS_LADDER_HEIGHTS)
+        else:
+            ladder = hls_ladder.plan_ladder(size[0], size[1], settings.HLS_LADDER_HEIGHTS)
         if not ladder:
             raise SessionError("unreadable")
         tracks = hls_ladder.probe_audio_tracks(source)
@@ -337,10 +341,15 @@ class SessionManager:
 
     # -- encoder control ---------------------------------------------------------------------
 
-    def _audio_args(self, session: Session) -> List[str] | None:
+    def _audio_args(self, session: Session, start_segment: int = 0) -> List[str] | None:
         if not session.has_audio:
             return None
         if session.audio_copy:
+            if start_segment > 0:
+                # A copied track cannot be trimmed: after a seek it starts where its container's seek point is,
+                # up to a couple of seconds before the picture, and sound and picture part company. Encoded
+                # again it starts where asked; the channel count stays the source's, so the init file still fits.
+                return ["-c:a", "aac", "-b:a", settings.AAC_BITRATE, "-bsf:a", "aac_adtstoasc"]
             return ["-c:a", "copy", "-bsf:a", "aac_adtstoasc"]
         return ["-c:a", "aac", "-b:a", settings.AAC_BITRATE, "-ac", str(settings.AAC_CHANNELS), "-bsf:a", "aac_adtstoasc"]
 
@@ -392,7 +401,7 @@ class SessionManager:
             source = session.growing.final_path
         args = hls_ladder.build_session_args(
             session.ladder, session.src_height, session.encoder, settings.HLS_X264_PRESET,
-            session.segment_seconds, "pipe:0" if piped else source, self._audio_args(session), index, init_prefix, session.audio_tracks, settings.AAC_CHANNELS,
+            session.segment_seconds, "pipe:0" if piped else source, self._audio_args(session, index), index, init_prefix, session.audio_tracks, settings.AAC_CHANNELS,
             settings.AUDIO_DOWNMIX, settings.AUDIO_DOWNMIX_BOOST, hls_ladder.detect_hw_decode(settings.HLS_HWDECODE),
         )
         with open(os.path.join(session.directory, "ffmpeg.log"), "a") as stderr_log:

@@ -214,6 +214,16 @@ def probe_video_size(filepath: str) -> tuple[int, int] | None:
 
 _encoder_cache: dict[str, str] = {}
 
+# What the detection tried and how each try went, for the diagnostics view: (what, worked, detail).
+detection_log: list[tuple[str, bool, str]] = []
+
+
+def last_line(output: bytes | str | None) -> str:
+    """The last line of a command's error output, for the log."""
+    text = output.decode("utf-8", "replace") if isinstance(output, bytes) else (output or "")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return lines[-1][:300] if lines else ""
+
 
 def detect_encoder(preference: str, device: str = VAAPI_DEVICE) -> str:
     """Pick the H.264 encoder. `preference` is "auto", "software" or "vaapi".
@@ -227,7 +237,9 @@ def detect_encoder(preference: str, device: str = VAAPI_DEVICE) -> str:
     if preference in _encoder_cache:
         return _encoder_cache[preference]
     chosen = SOFTWARE
-    if os.path.exists(device) and _vaapi_works(device):
+    if not os.path.exists(device):
+        detection_log.append(("VAAPI device", False, f"{device} does not exist: no GPU is mapped into the container"))
+    elif _vaapi_works(device):
         chosen = VAAPI
     _encoder_cache[preference] = chosen
     return chosen
@@ -244,10 +256,16 @@ def fall_back_to_software() -> None:
 _vaapi_low_power = False
 
 
+def vaapi_low_power() -> bool:
+    """Whether the VAAPI encoder that works here is the low-power one."""
+    return _vaapi_low_power
+
+
 def reset_encoder_cache() -> None:
     global _vaapi_low_power
     _encoder_cache.clear()
     _hw_decode_cache.clear()
+    detection_log.clear()
     _vaapi_low_power = False
 
 
@@ -264,10 +282,13 @@ def _vaapi_works(device: str) -> bool:
             "-b:v", "2M", "-maxrate", "2M", "-bufsize", "4M",
             "-f", "null", "-",
         ]
+        label = "VAAPI encode, low-power mode" if low_power else "VAAPI encode"
         try:
-            ok = subprocess.run(cmd, capture_output=True, timeout=20, check=False).returncode == 0
-        except Exception:
-            ok = False
+            result = subprocess.run(cmd, capture_output=True, timeout=20, check=False)
+            ok, detail = result.returncode == 0, last_line(result.stderr)
+        except Exception as e:
+            ok, detail = False, str(e)
+        detection_log.append((label, ok, detail))
         if ok:
             _vaapi_low_power = low_power
             return True
@@ -298,14 +319,17 @@ def _hw_decode_works(device: str) -> bool:
             capture_output=True, timeout=20, check=False,
         ).stdout
         if not clip:
+            detection_log.append(("GPU decode", False, "could not make the test clip"))
             return False
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-hwaccel", "vaapi", "-hwaccel_device", device,
              "-hwaccel_output_format", "vaapi", "-i", "pipe:0", "-f", "null", "-"],
             input=clip, capture_output=True, timeout=20, check=False,
         )
+        detection_log.append(("GPU decode", result.returncode == 0, last_line(result.stderr)))
         return result.returncode == 0
-    except Exception:
+    except Exception as e:
+        detection_log.append(("GPU decode", False, str(e)))
         return False
 
 
