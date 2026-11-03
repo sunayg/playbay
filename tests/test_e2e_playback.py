@@ -145,3 +145,66 @@ def test_stopping_the_encoder_midway_leaves_no_short_segment_behind(playback, tm
     for index in range(0, 7):
         _check_segment(manager, session, init, index, tmp_path)
     assert all(os.path.getsize(os.path.join(session.directory, hs.segment_name(0, i))) > 0 for i in hs.produced_indexes(session.directory))
+
+
+def _has_filter(name: str) -> bool:
+    out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True).stdout
+    return f" {name} " in out
+
+
+@pytest.fixture(scope="module")
+def hdr_source(tmp_path_factory):
+    """A 10-bit HEVC clip tagged BT.2020 / PQ (HDR10), made from the same colourful test pattern."""
+    if not _has_filter("zscale"):
+        pytest.skip("this ffmpeg has no zscale")
+    path = str(tmp_path_factory.mktemp("hdr") / "hdr.mkv")
+    subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+            "-f", "lavfi", "-i", f"testsrc2=size=1280x720:rate={FPS}:duration=14",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=14",
+            "-vf", "format=yuv420p10le,zscale=tin=bt709:pin=bt709:min=bt709:rin=tv:t=smpte2084:p=bt2020:m=bt2020nc:r=tv:npl=1000,format=yuv420p10le",
+            "-c:v", "libx265", "-preset", "ultrafast",
+            "-x265-params", "log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited",
+            "-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc",
+            "-c:a", "aac", "-ac", "2", path,
+        ],
+        check=True,
+    )
+    return path
+
+
+def _saturation(path) -> float:
+    out = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-nostdin", "-v", "error", "-i", str(path), "-vf", "signalstats,metadata=print:file=-", "-f", "null", "-"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    values = [float(line.split("=")[1]) for line in out.splitlines() if "signalstats.SATAVG" in line]
+    return sum(values) / len(values)
+
+
+def test_an_hdr_source_comes_out_as_sdr_with_its_colours(hdr_source, tmp_path, monkeypatch):
+    assert hs.hls_ladder.probe_dynamic_range(hdr_source) == "pq"
+    for name, value in (("HLS_LADDER_HEIGHTS", [480]), ("HLS_ENCODER", "software"), ("HLS_HWDECODE", "off"),
+                        ("HLS_LIMIT_BY_SPEED", False), ("HLS_X264_PRESET", "ultrafast"), ("HLS_SEGMENT_DURATION", SEGMENT)):
+        monkeypatch.setattr(settings, name, value)
+    manager = hs.SessionManager(str(tmp_path / "sessions"))
+    session = manager.create("hash/hdr.mkv", hdr_source, 0.0)
+    try:
+        assert session.hdr == "pq"
+        init = _fetch(manager, session, "init_v0.mp4")
+        joined = tmp_path / "out.mp4"
+        joined.write_bytes(init + _fetch(manager, session, hs.segment_name(0, 0)))
+        tags = json.loads(
+            subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_primaries,color_transfer,color_space,pix_fmt", "-of", "json", str(joined)],
+                capture_output=True, check=True,
+            ).stdout
+        )["streams"][0]
+        # Said to be SDR, so a browser does not treat it as HDR ...
+        assert tags["pix_fmt"] == "yuv420p"
+        assert tags.get("color_primaries") == "bt709" and tags.get("color_transfer") == "bt709" and tags.get("color_space") == "bt709"
+        # ... and the colours survive. Without tone mapping the test pattern's saturation drops to about a quarter.
+        assert _saturation(joined) > 80
+    finally:
+        manager.close_all()

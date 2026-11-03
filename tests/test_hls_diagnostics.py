@@ -85,3 +85,10 @@ def test_the_report_warns_when_even_the_lowest_level_is_too_slow(monkeypatch):
     monkeypatch.setattr(settings, "HLS_LADDER_HEIGHTS", [480])
     _speed(monkeypatch, 0.3)
     assert any("slower than real time" in w for w in hd.report()["warnings"])
+
+
+def test_hdr_tone_mapped_on_the_cpu_leaves_room_for_fewer_renditions(monkeypatch):
+    _speed(monkeypatch, 5)  # fine for SDR at 1080p+720p, not once tone mapping costs three times as much
+    sdr = [r.height for r in hd.fit_ladder(1920, 1080, [1080, 720])]
+    hdr = [r.height for r in hd.fit_ladder(1920, 1080, [1080, 720], hdr_on_cpu=True)]
+    assert sdr == [1080, 720] and len(hdr) < len(sdr)

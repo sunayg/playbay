@@ -212,6 +212,33 @@ def probe_video_size(filepath: str) -> tuple[int, int] | None:
     return (width, height) if width > 0 and height > 0 else None
 
 
+def probe_dynamic_range(filepath: str) -> str:
+    """"sdr", "pq" (HDR10, or Dolby Vision with an HDR10 base layer), "hlg", or "dovi" (Dolby Vision profile 5,
+    whose colours only a Dolby-aware player can show: tone-mapped as HDR10 they come out green and purple)."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=color_transfer,color_primaries:stream_side_data=dv_profile",
+                "-of", "json", filepath,
+            ],
+            capture_output=True, timeout=20, check=False,
+        )
+        stream = json.loads(result.stdout or b"{}")["streams"][0]
+    except Exception:
+        return "sdr"
+    side_data_list: List[Dict[str, Any]] = stream.get("side_data_list") or []
+    for side_data in side_data_list:
+        if int(side_data.get("dv_profile") or 0) == 5:
+            return "dovi"
+    transfer = str(stream.get("color_transfer") or "")
+    if transfer == "smpte2084":
+        return "pq"
+    if transfer == "arib-std-b67":
+        return "hlg"
+    return "sdr"
+
+
 _encoder_cache: dict[str, str] = {}
 
 # What the detection tried and how each try went, for the diagnostics view: (what, worked, detail).
@@ -219,9 +246,13 @@ detection_log: list[tuple[str, bool, str]] = []
 
 
 def last_line(output: bytes | str | None) -> str:
-    """The last line of a command's error output, for the log."""
+    """The line of a command's error output that says what went wrong, for the log: the first one that names a
+    cause (ffmpeg ends with generic lines such as "Nothing was written into output file"), else the last."""
     text = output.decode("utf-8", "replace") if isinstance(output, bytes) else (output or "")
     lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for line in lines:
+        if any(word in line for word in ("not supported", "Failed", "Cannot", "Impossible", "No such", "denied", "Unknown")):
+            return line[:300]
     return lines[-1][:300] if lines else ""
 
 
@@ -265,6 +296,7 @@ def reset_encoder_cache() -> None:
     global _vaapi_low_power
     _encoder_cache.clear()
     _hw_decode_cache.clear()
+    _tonemap_cache.clear()
     detection_log.clear()
     _vaapi_low_power = False
 
@@ -293,6 +325,35 @@ def _vaapi_works(device: str) -> bool:
             _vaapi_low_power = low_power
             return True
     return False
+
+
+_tonemap_cache: dict[str, bool] = {}
+
+
+def detect_vaapi_tonemap(device: str = VAAPI_DEVICE) -> bool:
+    """Whether the GPU can tone-map HDR to SDR (`tonemap_vaapi`), found by doing it to a test pattern."""
+    if device not in _tonemap_cache:
+        _tonemap_cache[device] = os.path.exists(device) and _vaapi_tonemap_works(device)
+    return _tonemap_cache[device]
+
+
+def _vaapi_tonemap_works(device: str) -> bool:
+    cmd = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        "-init_hw_device", f"vaapi=va:{device}", "-filter_hw_device", "va",
+        "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=24:duration=1",
+        "-vf",
+        "format=yuv420p10le,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,"
+        + "format=p010le,hwupload,tonemap_vaapi=format=nv12:p=bt709:t=bt709:m=bt709,hwdownload,format=nv12",
+        "-f", "null", "-",
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=20, check=False)
+        ok, detail = result.returncode == 0, last_line(result.stderr)
+    except Exception as e:
+        ok, detail = False, str(e)
+    detection_log.append(("GPU tone mapping", ok, detail))
+    return ok
 
 
 _hw_decode_cache: dict[str, bool] = {}
@@ -333,14 +394,35 @@ def _hw_decode_works(device: str) -> bool:
         return False
 
 
-def filter_graph(ladder: Sequence[Rendition], src_height: int, encoder: str) -> str:
+# HDR to SDR on the CPU: linear light, BT.709 primaries, Hable tone curve, back to BT.709 video range.
+CPU_TONEMAP = (
+    "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,"
+    "zscale=t=bt709:m=bt709:r=tv"
+)
+GPU_TONEMAP = "tonemap_vaapi=format=nv12:p=bt709:t=bt709:m=bt709"
+
+
+def filter_graph(ladder: Sequence[Rendition], src_height: int, encoder: str, hdr: str = "sdr", gpu_tonemap: bool = False) -> str:
+    """The filter graph: the source, tone-mapped to SDR if it is HDR, then split into one scaled picture per
+    rendition. An HDR source is scaled down to the top rendition first, so the expensive tone mapping sees
+    the fewest pixels. `gpu_tonemap` (VAAPI encoder only) does it on the GPU."""
     count = len(ladder)
-    if encoder == VAAPI:
+    top = ladder[0]
+    resize = top.height != src_height
+    if hdr != "sdr" and gpu_tonemap and encoder == VAAPI:
+        scale_in = f"scale_vaapi=w={top.width}:h={top.height}:format=p010," if resize else ""
+        head = f"[0:v:0]format=p010le,hwupload,{scale_in}{GPU_TONEMAP}"
+        src_height = top.height  # already at the top rendition's size
+    elif hdr != "sdr":
+        scale_in = f"scale={top.width}:{top.height}," if resize else ""
+        sdr = f"{scale_in}{CPU_TONEMAP}"
+        head = f"[0:v:0]{sdr},format=nv12,hwupload" if encoder == VAAPI else f"[0:v:0]{sdr},format=yuv420p"
+        src_height = top.height
+    elif encoder == VAAPI:
         head = "[0:v:0]format=nv12,hwupload"
-        scale = "scale_vaapi=w={w}:h={h}"
     else:
         head = "[0:v:0]format=yuv420p"
-        scale = "scale={w}:{h}"
+    scale = "scale_vaapi=w={w}:h={h}" if encoder == VAAPI else "scale={w}:{h}"
     labels = "".join(f"[s{r.index}]" for r in ladder)
     parts = [f"{head},split={count}{labels}" if count > 1 else f"{head}[s0]"]
     for r in ladder:
@@ -362,6 +444,7 @@ def encode_args(
     preset: str,
     segment_seconds: int,
     audio_args: Sequence[str] | None,
+    tone_mapped: bool = False,
 ) -> List[str]:
     """Codec, rate-control and keyframe options shared by every way of running the ladder."""
     args: List[str] = []
@@ -379,6 +462,9 @@ def encode_args(
         ]
     if audio_args is not None:
         args += list(audio_args)
+    if tone_mapped:
+        # The pictures are SDR BT.709 now: say so, or the browser may still treat the stream as BT.2020 HDR.
+        args += ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
     args += ["-tag:v", "avc1"]
     return args
 
@@ -429,6 +515,8 @@ def build_session_args(
     downmix: str = "dialogue",
     downmix_boost: int = 100,
     hw_decode: bool = False,
+    hdr: str = "sdr",
+    gpu_tonemap: bool = False,
 ) -> List[str]:
     """ffmpeg arguments for a seekable session: read `source` by path from `start_segment`.
 
@@ -448,7 +536,7 @@ def build_session_args(
         args += ["-hwaccel", "vaapi", "-hwaccel_device", VAAPI_DEVICE]
     if start > 0:
         args += ["-ss", str(start)]
-    args += ["-i", source, "-sn", "-filter_complex", filter_graph(ladder, src_height, encoder)]
+    args += ["-i", source, "-sn", "-filter_complex", filter_graph(ladder, src_height, encoder, hdr, gpu_tonemap)]
     for r in ladder:
         args += ["-map", f"[v{r.index}]"]
     separate = audio_args is not None and len(audio_tracks) > 1
@@ -459,7 +547,7 @@ def build_session_args(
         else:
             for _ in ladder:
                 args += ["-map", "0:a:0"]
-    args += encode_args(ladder, encoder, preset, segment_seconds, audio_args)
+    args += encode_args(ladder, encoder, preset, segment_seconds, audio_args, hdr != "sdr")
     if audio_args is not None and "copy" not in audio_args:
         # Each output audio stream gets the downmix its own source track needs.
         outputs = list(audio_tracks) if separate else [audio_tracks[0] if audio_tracks else None] * len(ladder)

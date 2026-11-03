@@ -20,6 +20,9 @@ TARGET_SPEED = 1.5
 BENCH_SECONDS = 8
 BENCH_FPS = 24
 BENCH_WIDTH, BENCH_HEIGHT = 1280, 720
+# Tone mapping HDR on the CPU costs about this many times the rest of the work (measured on a 1080p HEVC
+# clip, one 720p rendition, veryfast x264: 3.5 s against 1.3 s).
+HDR_CPU_COST = 3.0
 
 _lock = threading.Lock()
 _pixels_per_second: float | None = None  # encoded pixels per wall-clock second, once measured
@@ -82,21 +85,23 @@ def reset() -> None:
         _pixels_per_second, _state, _error = None, "idle", ""
 
 
-def estimated_speed(ladder: Sequence[hls_ladder.Rendition]) -> float | None:
-    """How many times faster than real time this ladder should encode, None when the speed is not known yet."""
+def estimated_speed(ladder: Sequence[hls_ladder.Rendition], hdr_on_cpu: bool = False) -> float | None:
+    """How many times faster than real time this ladder should encode, None when the speed is not known yet.
+    `hdr_on_cpu`: the source is HDR and is tone-mapped on the CPU, which makes everything slower."""
     throughput = _pixels_per_second
     if not throughput or not ladder:
         return None
-    return throughput / (BENCH_FPS * sum(r.width * r.height for r in ladder))
+    speed = throughput / (BENCH_FPS * sum(r.width * r.height for r in ladder))
+    return speed / HDR_CPU_COST if hdr_on_cpu else speed
 
 
-def fit_ladder(src_width: int, src_height: int, heights: Sequence[int]) -> List[hls_ladder.Rendition]:
+def fit_ladder(src_width: int, src_height: int, heights: Sequence[int], hdr_on_cpu: bool = False) -> List[hls_ladder.Rendition]:
     """The configured ladder, with the highest renditions dropped while this machine could not encode them
     all faster than real time. Never fewer than one rendition; the speed unknown means the ladder as asked."""
     wanted = list(heights)
     ladder = hls_ladder.plan_ladder(src_width, src_height, wanted)
     while len(ladder) > 1:
-        speed = estimated_speed(ladder)
+        speed = estimated_speed(ladder, hdr_on_cpu)
         if speed is None or speed >= TARGET_SPEED:
             break
         wanted = [h for h in wanted if h < ladder[0].height]
@@ -129,7 +134,7 @@ def report() -> Dict[str, Any]:
     if speed is not None and speed < 1.0:
         warnings.append(
             "This machine encodes slower than real time even at the lowest quality level, so playback will stall. "
-            "A faster x264 preset (ultrafast), a hardware encoder or fewer quality levels would help."
+            + "A faster x264 preset (ultrafast), a hardware encoder or fewer quality levels would help."
         )
     return {
         "ffmpeg": version[0] if version else "not found",

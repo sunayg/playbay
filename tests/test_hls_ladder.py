@@ -275,3 +275,109 @@ def test_gpu_decoding_is_asked_for_only_when_it_works_and_is_wanted(monkeypatch,
     hls_ladder.reset_encoder_cache()
     assert not hls_ladder.detect_hw_decode("auto", str(tmp_path / "missing"))  # no GPU device at all
     hls_ladder.reset_encoder_cache()
+
+
+# ---- HDR to SDR ---------------------------------------------------------------------------------
+
+
+def _probe_json(monkeypatch, stream):
+    import json
+
+    class Result:
+        returncode = 0
+        stdout = json.dumps({"streams": [stream]}).encode()
+        stderr = b""
+
+    monkeypatch.setattr(hls_ladder.subprocess, "run", lambda *a, **k: Result())
+
+
+def test_the_dynamic_range_of_a_source_is_read_from_its_transfer_function(monkeypatch):
+    _probe_json(monkeypatch, {"color_transfer": "bt709"})
+    assert hls_ladder.probe_dynamic_range("/in.mkv") == "sdr"
+    _probe_json(monkeypatch, {})
+    assert hls_ladder.probe_dynamic_range("/in.mkv") == "sdr"
+    _probe_json(monkeypatch, {"color_transfer": "smpte2084", "color_primaries": "bt2020"})
+    assert hls_ladder.probe_dynamic_range("/in.mkv") == "pq"
+    _probe_json(monkeypatch, {"color_transfer": "arib-std-b67"})
+    assert hls_ladder.probe_dynamic_range("/in.mkv") == "hlg"
+
+
+def test_dolby_vision_without_an_hdr10_layer_is_told_apart(monkeypatch):
+    _probe_json(monkeypatch, {"color_transfer": "smpte2084", "side_data_list": [{"dv_profile": 5}]})
+    assert hls_ladder.probe_dynamic_range("/in.mkv") == "dovi"
+    # profile 8 has an HDR10 base layer: tone-mapped like any HDR10
+    _probe_json(monkeypatch, {"color_transfer": "smpte2084", "side_data_list": [{"dv_profile": 8}]})
+    assert hls_ladder.probe_dynamic_range("/in.mkv") == "pq"
+
+
+def test_an_unreadable_probe_counts_as_sdr(monkeypatch):
+    def fail(*a, **k):
+        raise OSError("no ffprobe")
+
+    monkeypatch.setattr(hls_ladder.subprocess, "run", fail)
+    assert hls_ladder.probe_dynamic_range("/in.mkv") == "sdr"
+
+
+def test_an_sdr_source_gets_no_tone_mapping():
+    ladder = plan_ladder(1920, 1080, [1080, 720])
+    assert "tonemap" not in hls_ladder.filter_graph(ladder, 1080, SOFTWARE)
+    assert "tonemap" not in hls_ladder.filter_graph(ladder, 1080, VAAPI)
+
+
+def test_an_hdr_source_is_scaled_to_the_top_rendition_then_tone_mapped_once_then_split():
+    ladder = plan_ladder(3840, 2160, [1080, 720])
+    graph = hls_ladder.filter_graph(ladder, 2160, SOFTWARE, "pq")
+    head, split_and_rest = graph.split(",split=", 1)
+    assert head.startswith("[0:v:0]scale=1920:1080,zscale=t=linear")
+    assert graph.count("tonemap=tonemap=hable") == 1
+    assert head.endswith("format=yuv420p")
+    # 1080 is the top: no second scale; 720 scales down after the tone mapping
+    assert "[s0]null[v0]" in graph and "[s1]scale=1280:720[v1]" in graph
+
+
+def test_hdr_tone_mapped_on_the_cpu_goes_up_to_the_gpu_afterwards_when_the_gpu_encodes():
+    ladder = plan_ladder(1920, 1080, [1080, 720])
+    graph = hls_ladder.filter_graph(ladder, 1080, VAAPI, "hlg")
+    assert "tonemap=tonemap=hable" in graph and "format=nv12,hwupload,split=2" in graph
+    assert "[s1]scale_vaapi=w=1280:h=720[v1]" in graph
+
+
+def test_hdr_can_be_tone_mapped_on_the_gpu():
+    ladder = plan_ladder(1920, 1080, [1080, 720])
+    graph = hls_ladder.filter_graph(ladder, 1080, VAAPI, "pq", gpu_tonemap=True)
+    assert "format=p010le,hwupload,tonemap_vaapi=format=nv12:p=bt709:t=bt709:m=bt709,split=2" in graph
+    assert "zscale" not in graph
+    # the GPU does not do it for a software encoder
+    assert "tonemap_vaapi" not in hls_ladder.filter_graph(ladder, 1080, SOFTWARE, "pq", gpu_tonemap=True)
+
+
+def test_tone_mapped_output_is_tagged_as_sdr_bt709_and_other_output_is_left_alone():
+    ladder = plan_ladder(1920, 1080, [1080])
+    hdr = hls_ladder.encode_args(ladder, SOFTWARE, "veryfast", 6, None, tone_mapped=True)
+    assert hdr[hdr.index("-color_primaries") + 1] == "bt709"
+    assert hdr[hdr.index("-color_trc") + 1] == "bt709" and hdr[hdr.index("-colorspace") + 1] == "bt709"
+    assert "-color_primaries" not in hls_ladder.encode_args(ladder, SOFTWARE, "veryfast", 6, None)
+
+
+def test_gpu_tone_mapping_is_found_by_trying_it_and_the_result_is_logged(monkeypatch):
+    class Done:
+        returncode = 1
+        stderr = b"Impossible to convert between the formats supported by the filter\n"
+
+    hls_ladder.reset_encoder_cache()
+    monkeypatch.setattr(hls_ladder.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(hls_ladder.subprocess, "run", lambda *a, **k: Done())
+    assert hls_ladder.detect_vaapi_tonemap("/dev/dri/renderD128") is False
+    assert hls_ladder.detection_log[-1][:2] == ("GPU tone mapping", False)
+    hls_ladder.reset_encoder_cache()
+
+
+def test_the_logged_reason_is_the_line_that_names_the_cause_not_ffmpegs_closing_line():
+    stderr = (
+        b"[Parsed_tonemap_vaapi_4 @ 0x1] Failed to create processing pipeline config: 12 (the requested VAProfile is not supported).\n"
+        b"Error while filtering: Input/output error\n"
+        b"[out#0/null @ 0x2] Nothing was written into output file, because at least one of its streams received no packets.\n"
+    )
+    assert "requested VAProfile is not supported" in hls_ladder.last_line(stderr)
+    assert hls_ladder.last_line(b"one\ntwo\n") == "two"
+    assert hls_ladder.last_line(b"") == ""

@@ -90,6 +90,7 @@ class Session:
     has_audio: bool
     audio_copy: bool  # the audio can go into the stream as it is
     encoder: str
+    hdr: str = "sdr"  # see hls_ladder.probe_dynamic_range
     audio_tracks: List[hls_ladder.AudioTrack] = field(default_factory=list)
     growing: GrowingSource | None = None
     lock: threading.RLock = field(default_factory=threading.RLock)
@@ -256,8 +257,11 @@ class SessionManager:
         size = hls_ladder.probe_video_size(source)
         if duration is None or size is None:
             raise SessionError("unreadable")
+        hdr = hls_ladder.probe_dynamic_range(source)
+        encoder = hls_ladder.detect_encoder(settings.HLS_ENCODER)
         if settings.HLS_LIMIT_BY_SPEED:
-            ladder = hls_diagnostics.fit_ladder(size[0], size[1], settings.HLS_LADDER_HEIGHTS)
+            tonemap_on_cpu = hdr != "sdr" and not (encoder == hls_ladder.VAAPI and hls_ladder.detect_vaapi_tonemap())
+            ladder = hls_diagnostics.fit_ladder(size[0], size[1], settings.HLS_LADDER_HEIGHTS, tonemap_on_cpu)
         else:
             ladder = hls_ladder.plan_ladder(size[0], size[1], settings.HLS_LADDER_HEIGHTS)
         if not ladder:
@@ -274,9 +278,11 @@ class SessionManager:
         session = Session(
             id=session_id, key=key, source=source, directory=directory, duration=duration,
             segment_seconds=settings.HLS_SEGMENT_DURATION, ladder=ladder, src_height=size[1],
-            has_audio=has_audio, audio_copy=audio_copy, encoder=hls_ladder.detect_encoder(settings.HLS_ENCODER),
-            audio_tracks=tracks, growing=growing,
+            has_audio=has_audio, audio_copy=audio_copy, encoder=encoder,
+            audio_tracks=tracks, growing=growing, hdr=hdr,
         )
+        if hdr == "dovi":
+            log.event(f"HLS session {session.id[:8]}: Dolby Vision profile 5 has no HDR10 layer; its colours will look wrong")
         with self._lock:
             self._sessions[session_id] = session
         with session.lock:
@@ -408,6 +414,7 @@ class SessionManager:
             session.ladder, session.src_height, session.encoder, settings.HLS_X264_PRESET,
             session.segment_seconds, "pipe:0" if piped else source, self._audio_args(session, index), index, init_prefix, session.audio_tracks, settings.AAC_CHANNELS,
             settings.AUDIO_DOWNMIX, settings.AUDIO_DOWNMIX_BOOST, hls_ladder.detect_hw_decode(settings.HLS_HWDECODE),
+            session.hdr, session.hdr != "sdr" and session.encoder == hls_ladder.VAAPI and hls_ladder.detect_vaapi_tonemap(),
         )
         with open(os.path.join(session.directory, "ffmpeg.log"), "a") as stderr_log:
             session.proc = Popen(
