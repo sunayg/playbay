@@ -28,11 +28,11 @@ This repository is a fork of [hauxir/rapidbay](https://github.com/hauxir/rapidba
 
 -   **New web UI.** The whole frontend is rewritten in Vue 3, TypeScript and Vite (`frontend/`), with a new dark design. Keyboard and TV-remote navigation, resume, favorites, search history and Chromecast are kept. It has unit tests (Vitest) and browser tests (Playwright).
 -   **Plex-style adaptive streaming.** Downloads are kept as they are and encoded on demand, a few minutes ahead of the playhead, into 1080p, 720p, 480p and 360p (never above the source). The player picks a level from the measured connection speed and you can seek anywhere. See [Adaptive streaming](#adaptive-streaming).
--   **Settings page** at `/settings`: 32 options in seven categories, saved to `settings.json`, applied live where possible. See [Settings page](#settings-page).
+-   **Settings page** at `/settings`: 34 options in seven categories, saved to `settings.json`, applied live where possible. See [Settings page](#settings-page).
 -   **Trending from TMDB.** The home rails show this week's worldwide trending titles when a TMDB key is set. The empty-search feed is now called "Latest releases".
 -   **Rich search is the only mode,** and a download can be cancelled from its screen.
 -   **A local stack with a VPN.** `docker-compose.local.yml` runs RapidBay and Prowlarr behind an ExpressVPN tunnel (via [gluetun](https://github.com/qdm12/gluetun)), so searches and torrent traffic both leave through the VPN. See [Running the local stack](#running-the-local-stack).
--   **Hardware-encoding hooks.** The image includes the Intel VAAPI driver and the local stack maps `/dev/dri`. It is used only when the GPU supports bitrate-capped encoding; otherwise encoding is software.
+-   **Hardware encoding and diagnostics.** On Linux with an Intel or AMD GPU mapped into the container, video is encoded and decoded on the GPU (VAAPI), after a test confirms it can honour the bitrates; otherwise it falls back to software. A diagnostics view under Settings > Streaming shows what was detected and why, a startup speed test drops quality levels the machine cannot keep up with, a stuck encoder is restarted, and an end-to-end playback test (real ffmpeg, seeks and restarts) runs in CI. See [Adaptive streaming](#adaptive-streaming) and [What works on which hardware](#what-works-on-which-hardware).
 
 ## Setting up a search backend
 
