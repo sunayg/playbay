@@ -138,9 +138,32 @@ RapidBay streams like Plex or Jellyfin: the download is kept as it is, and video
 - **Disk use:** the original download is hard-linked into the output folder rather than copied or converted, so a finished file costs its own size once. A playing session adds a few minutes of video per quality level (62 MB in a 5-minute, 1080p test, against a source of 528 MB), and is deleted when you stop watching. Nothing else is stored.
 
 - **Quality levels:** edit them in Settings, under Streaming.
-- **Hardware encoding:** `HLS_ENCODER=auto` (the default) tries VAAPI when `/dev/dri/renderD128` exists and a bitrate-capped test encode works, and falls back to software x264 otherwise. `HLS_ENCODER=software` or `vaapi` forces one. The local compose file maps `/dev/dri` into the container. Some Intel iGPUs only offer constant-quality VAAPI encoding, which cannot honour the bitrates, so they use software encoding. The VAAPI path has only been unit-tested, not run on a GPU that supports it.
-- **Speed:** each session must encode faster than real time, and every quality level adds CPU. With software encoding, drop the highest levels in Settings, or set `HLS_X264_PRESET` to `superfast`, if playback stalls. `MAX_PARALLEL_HLS_STREAMS` limits concurrent sessions.
+- **Hardware encoding:** `HLS_ENCODER=auto` (the default) uses the GPU only if a bitrate-capped test encode on it succeeds, and falls back to software x264 otherwise. `software` or `vaapi` force one. Only VAAPI (Intel and AMD on Linux) is supported as a hardware path; NVIDIA and Intel QSV are not used yet. Decoding the source on the GPU (`HLS_HWDECODE=auto`) is independent of the encoder.
+- **Speed:** each session must encode faster than real time, and every quality level adds work. At startup a short test encode measures this machine, and new sessions leave out the highest quality levels while it could not encode them all faster than 1.5x real time (Settings > Streaming, "Limit quality levels to what this machine can encode"). The test covers encoding only, not decoding a heavy source. With software encoding you can also set `HLS_X264_PRESET` to `superfast` or `ultrafast`. `MAX_PARALLEL_HLS_STREAMS` limits concurrent sessions.
+- **Seeing what happened:** Settings > Streaming > "Video encoding on this machine" (or `/api/hls_diagnostics`) shows the encoder and decoder chosen, each hardware test that was tried and why it failed, and the measured speed. Include it in a bug report. Encoder starts, restarts and failures also go to the container's log (`docker logs`). An encoder that is running but produces nothing for 45 seconds is restarted.
 - **Kodi and casting:** both get the original file, not an encode, so they need a device that plays its format. Chromecast works for H.264 MP4 files.
+
+### Hardware encoding on Linux (Intel and AMD, VAAPI)
+
+Map the GPU into the container and give it access to the render group. In `docker-compose.yml`:
+
+```yaml
+services:
+  rapidbay:
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "992"   # the group that owns /dev/dri/renderD128 on the host: `stat -c %g /dev/dri/renderD128`
+```
+
+Then open the diagnostics view. If the encoder says `libx264`, the test list says why:
+
+- `/dev/dri/renderD128 does not exist`: the device is not mapped, or the machine has no GPU.
+- A permission error: the container user is not in the render group (`group_add` above).
+- Intel Kaby Lake, Coffee Lake and similar chips can encode H.264 at a target bitrate only with the non-free Intel media driver, which the image installs. Newer Intel chips and AMD work with the free drivers.
+- Intel chips that only support constant quality cannot honour the quality levels' bitrates and use software encoding.
+
+Without a GPU the encoder runs on the CPU. A recent 4-core CPU encodes one or two 720p levels comfortably; the speed test removes the levels it cannot keep up with.
 
 ## Subtitles
 

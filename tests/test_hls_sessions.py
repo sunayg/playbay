@@ -572,3 +572,43 @@ def test_audio_is_copied_from_the_start_but_encoded_again_after_a_seek(tmp_path)
     assert manager._audio_args(session, 0) == ["-c:a", "copy", "-bsf:a", "aac_adtstoasc"]
     after_seek = manager._audio_args(session, 5)
     assert after_seek is not None and "copy" not in after_seek and "-ac" not in after_seek
+
+
+def _watched_session(tmp_path):
+    manager = hs.SessionManager(str(tmp_path))
+    session = _session(duration=600.0, directory=str(tmp_path))
+    session.proc = _FakeProc()  # type: ignore[assignment]
+    session.progress_mark = 1
+    return manager, session
+
+
+def test_an_encoder_that_has_produced_nothing_new_for_a_while_is_stuck(tmp_path):
+    manager, session = _watched_session(tmp_path)
+    session.progress_at = hs.time.monotonic() - hs.STALL_SECONDS - 1
+    stuck = manager._watch_progress(session, [0, 1])
+    assert stuck is not None and stuck[0] is session.proc and stuck[1] == 2
+
+
+def test_progress_a_pause_or_a_download_still_arriving_is_not_a_stall(tmp_path):
+    manager, session = _watched_session(tmp_path)
+    old = hs.time.monotonic() - hs.STALL_SECONDS - 1
+    session.progress_at = old
+    assert manager._watch_progress(session, [0, 1, 2]) is None  # it moved on
+    session.progress_at, session.paused = old, True
+    assert manager._watch_progress(session, [0, 1, 2]) is None  # paused ahead of the viewer
+    session.paused, session.progress_mark, session.progress_at = False, 2, old
+    session.growing = hs.GrowingSource(total_size=100, available=lambda: 10, request_window=lambda _w: None)
+    assert manager._watch_progress(session, [0, 1, 2]) is None  # waiting for the torrent
+    session.growing, session.progress_mark, session.progress_at = None, 2, hs.time.monotonic()
+    assert manager._watch_progress(session, [0, 1, 2]) is None  # not for long enough yet
+
+
+def test_the_stuck_encoder_is_restarted_where_it_stopped_and_a_stuck_one_is_given_up_on(tmp_path, monkeypatch):
+    manager, session = _watched_session(tmp_path)
+    started: list[int] = []
+    monkeypatch.setattr(manager, "_start_process", lambda _s, index: started.append(index))
+    for _ in range(hs.MAX_ENCODER_FAILURES):
+        assert manager._recover(session, session.proc, 2)  # type: ignore[arg-type]
+    assert started == [2, 2] and not session.dead
+    assert not manager._recover(session, session.proc, 2)  # type: ignore[arg-type]
+    assert session.dead

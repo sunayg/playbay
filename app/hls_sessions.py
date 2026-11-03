@@ -44,6 +44,8 @@ POLL_SECONDS = 0.1
 PIPE_CHUNK = 256 * 1024
 # An encoder that dies on its own is restarted this many times in a row before the session is given up on.
 MAX_ENCODER_FAILURES = 2
+# An encoder that is running, has work to do and has produced nothing new for this long is stuck: restart it.
+STALL_SECONDS = 45
 
 _SEGMENT_RE = re.compile(r"^seg_v(\d+)_(\d{4,})\.m4s$")
 _INIT_RE = re.compile(r"^init_v(\d+)\.mp4$")
@@ -106,6 +108,9 @@ class Session:
     closed: bool = False
     # Track id -> timescale for each variant, read from its init file.
     timescales: Dict[int, Dict[int, int]] = field(default_factory=dict)
+    # How far the current run had got when last looked at, and when that last changed (the stall watchdog).
+    progress_mark: int = -1
+    progress_at: float = field(default_factory=time.monotonic)
 
     @property
     def separate_audio(self) -> bool:
@@ -411,7 +416,9 @@ class SessionManager:
         if piped and session.growing is not None:
             threading.Thread(target=self._feed, args=(session.source, session.growing, session.proc), daemon=True).start()
         session.start_segment = index
-        log.debug(f"HLS session {session.id[:8]}: encoding from segment {index} ({session.encoder})")
+        session.progress_mark = -1
+        session.progress_at = time.monotonic()
+        log.event(f"HLS session {session.id[:8]}: encoding from segment {index} ({session.encoder}, run {session.runs})")
 
     @staticmethod
     def _feed(path: str, growing: GrowingSource, proc: "Popen[bytes]") -> None:
@@ -479,6 +486,7 @@ class SessionManager:
         if session.proc and session.paused:
             with contextlib.suppress(OSError):
                 session.proc.send_signal(signal.SIGCONT)
+            session.progress_at = time.monotonic()  # a pause is not a stall
         session.paused = False
 
     # -- serving -----------------------------------------------------------------------------
@@ -554,11 +562,12 @@ class SessionManager:
             if session.proc is not failed:
                 return True  # another request already restarted it
             session.failures += 1
+            log.event(f"HLS session {session.id[:8]}: encoder stopped (exit {failed.returncode}), failure {session.failures}")
             if session.failures > MAX_ENCODER_FAILURES:
                 session.dead = True
                 if session.encoder == hls_ladder.VAAPI:
                     hls_ladder.fall_back_to_software()  # the replacement session then encodes in software
-                log.debug(f"HLS session {session.id[:8]}: encoder keeps failing (exit {failed.returncode}), giving up")
+                log.event(f"HLS session {session.id[:8]}: encoder keeps failing (exit {failed.returncode}), giving up")
                 return False
             self._start_process(session, index if abs(index - session.latest) <= RESTART_GAP else session.latest)
             return True
@@ -606,6 +615,7 @@ class SessionManager:
             return
         with session.lock:
             indexes = produced_indexes(session.directory)
+            stuck = self._watch_progress(session, indexes)
             if session.proc is not None and session.proc.poll() is None and indexes:
                 ahead = encoded_through(indexes, session.start_segment) - session.requested
                 if ahead > PAUSE_AHEAD and not session.paused:
@@ -614,7 +624,27 @@ class SessionManager:
                     session.paused = True
                 elif ahead <= RESUME_AT and session.paused:
                     self._resume(session)
+        if stuck is not None:
+            self._recover(session, stuck[0], stuck[1])
         self._delete_behind(session)
+
+    def _watch_progress(self, session: Session, indexes: List[int]) -> "tuple[Popen[bytes], int] | None":
+        """Note how far the running encoder has got. Returns (process, segment to restart at) when it is stuck:
+        running, not paused, with somewhere to go, and nothing new for STALL_SECONDS. Waiting for the download
+        to catch up is not being stuck. Caller holds session.lock."""
+        proc = session.proc
+        now = time.monotonic()
+        through = encoded_through(indexes, session.start_segment)
+        waiting_for_download = session.growing is not None and not session.growing.complete()
+        if proc is None or proc.poll() is not None or session.paused or waiting_for_download or through != session.progress_mark:
+            session.progress_mark = through
+            session.progress_at = now
+            return None
+        if now - session.progress_at < STALL_SECONDS or through + 1 >= session.segment_count:
+            return None
+        log.event(f"HLS session {session.id[:8]}: no new segment for {int(now - session.progress_at)} s after {through}, restarting the encoder")
+        session.progress_at = now
+        return proc, through + 1
 
     def _delete_behind(self, session: Session) -> None:
         cutoff = session.requested - KEEP_BEHIND
